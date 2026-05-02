@@ -1,0 +1,9 @@
+repositories:
+  sensor_packages:
+    type: git
+    url: https://github.com/HERO-Lab-POSTECH/sensor_packages.git
+    version: main
+  microstrain_inertial:
+    type: git
+    url: https://github.com/LORD-MicroStrain/microstrain_inertial.git
+    version: ros2
