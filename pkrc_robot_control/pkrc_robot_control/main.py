@@ -12,16 +12,16 @@ from sensor_msgs.msg import Joy, Image, CompressedImage
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32MultiArray
 from cv_bridge import CvBridge
-from can_control_module import VESCControlNode
-from relay_control_module import RelayControlModule
-from lumen_module import LumenController
-from GUI_module import WebGUIModule
-from battery_module import BatteryMonitor
-from rgb_led_module import BlueRoboticsLED
-from PKRC_joy_module import PKRCJoystickController
-from hovering_module import HoveringController
-from PID_control_module import PIDModeController
-from sonar_tilt_module import SonarTiltModule
+from .can_control_module import VESCControlNode
+from .relay_control_module import RelayControlModule
+from .lumen_module import LumenController
+from .GUI_module import WebGUIModule
+from .battery_module import BatteryMonitor
+from .rgb_led_module import BlueRoboticsLED
+from .PKRC_joy_module import PKRCJoystickController
+from .hovering_module import HoveringController
+from .PID_control_module import PIDModeController
+from .sonar_tilt_module import SonarTiltModule
 import threading
 import cv2
 import time

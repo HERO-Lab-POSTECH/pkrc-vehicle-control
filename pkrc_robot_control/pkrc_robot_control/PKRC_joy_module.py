@@ -9,7 +9,7 @@ PKRC 조이스틱 제어 모듈 (CAN 버전 - 4모터 홀로노믹)
 """
 
 from sensor_msgs.msg import Joy
-from common_controls import CommonControls
+from .common_controls import CommonControls
 
 
 class PKRCJoystickController:
