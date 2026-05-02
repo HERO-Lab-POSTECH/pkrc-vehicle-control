@@ -123,6 +123,7 @@ class HEROMainControl(VESCControlNode):
             relay_controller=self.relay_controller,
             lumen_controller=self.lumen_controller,
             rgb_led=self.rgb_led,
+            web_gui=None,
             logger=self.get_logger(),
             main_node=self,  # 녹화 제어를 위한 메인 노드
             sonar_tilt=self.sonar_tilt,  # 소나 틸트 모듈
