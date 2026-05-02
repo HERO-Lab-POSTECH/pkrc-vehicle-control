@@ -15,7 +15,6 @@ from cv_bridge import CvBridge
 from .can_control_module import VESCControlNode
 from .relay_control_module import RelayControlModule
 from .lumen_module import LumenController
-from .GUI_module import WebGUIModule
 from .battery_module import BatteryMonitor
 from .rgb_led_module import BlueRoboticsLED
 from .PKRC_joy_module import PKRCJoystickController
@@ -49,28 +48,18 @@ class HEROMainControl(VESCControlNode):
         # 카메라 장치 경로 (고정 경로 사용)
         self.camera_device = DEFAULT_CAMERA_DEVICE
         
-        # === 웹 GUI 초기화 (가장 먼저) ===
-        self.web_gui = WebGUIModule(
-            host='0.0.0.0',
-            port=5000,
-            enable_camera=False,
-            camera_device=self.camera_device,
-            ros_node=self  # Foxglove 토픽 발행용 ROS2 노드 전달
-        )
-        
         # === 하드웨어 모듈 초기화 ===
-        self.relay_controller = RelayControlModule(auto_init=True, web_gui=self.web_gui)
+        self.relay_controller = RelayControlModule(auto_init=True)
         self.lumen_controller = LumenController(pin=32, frequency=50, auto_init=True)  # Pin 32 (hero_ws/control 핀 매핑)
         self.battery_monitor = BatteryMonitor(
             can_channel='can0',
             low_voltage_threshold=13.0,
             critical_voltage_threshold=12.5,
             auto_init=True,
-            web_gui=self.web_gui
         )
         
         try:
-            self.rgb_led = BlueRoboticsLED(spi_bus=0, spi_device=0, web_gui=self.web_gui)
+            self.rgb_led = BlueRoboticsLED(spi_bus=0, spi_device=0)
             self.rgb_led.set_orange()  # 초기: 주황색 (시동 OFF)
             self.get_logger().info('✅ RGB LED 초기화 완료')
         except Exception as e:
@@ -121,7 +110,6 @@ class HEROMainControl(VESCControlNode):
         try:
             self.sonar_tilt = SonarTiltModule(
                 ros_node=self,
-                web_gui=self.web_gui,
                 logger=self.get_logger()
             )
             self.get_logger().info('소나 틸트 모듈 초기화 완료')
@@ -135,7 +123,6 @@ class HEROMainControl(VESCControlNode):
             relay_controller=self.relay_controller,
             lumen_controller=self.lumen_controller,
             rgb_led=self.rgb_led,
-            web_gui=self.web_gui,
             logger=self.get_logger(),
             main_node=self,  # 녹화 제어를 위한 메인 노드
             sonar_tilt=self.sonar_tilt,  # 소나 틸트 모듈
@@ -147,7 +134,6 @@ class HEROMainControl(VESCControlNode):
         # === 호버링 컨트롤러 초기화 ===
         self.hovering_controller = HoveringController(
             vesc_controller=self.controller,
-            web_gui=self.web_gui,
             logger=self.get_logger(),
             max_current=8.0,
             enable_yaw_control=True,  # bag 분석 결과: yaw_cmd 방향 반전 필요
@@ -159,7 +145,6 @@ class HEROMainControl(VESCControlNode):
         # === PID 모드 컨트롤러 초기화 ===
         self.pid_controller = PIDModeController(
             vesc_controller=self.controller,
-            web_gui=self.web_gui,
             logger=self.get_logger(),
             max_current=8.0,
             enable_yaw_control=True,
@@ -202,9 +187,6 @@ class HEROMainControl(VESCControlNode):
         # 50ms마다 체크 (20Hz)
         self.timeout_timer = self.create_timer(0.05, self.timeout_check_loop)
 
-        # === 웹 GUI 시작 ===
-        self.start_web_gui()
-        
         # === 시작 메시지 ===
         self.print_startup_info()
     
@@ -277,7 +259,6 @@ class HEROMainControl(VESCControlNode):
                 self.last_frame_time = current_time
                 with self.frame_lock:
                     self.latest_frame = frame.copy()
-                self.web_gui.latest_frame = frame.copy()
 
                 # 녹화 중이면 프레임 저장
                 if self.is_recording:
@@ -286,14 +267,6 @@ class HEROMainControl(VESCControlNode):
                             try:
                                 self.video_writer.write(frame)
                                 self.recording_frame_count += 1
-
-                                # GUI 상태 업데이트
-                                elapsed = current_time - self.recording_start_time
-                                self.web_gui.state['recording'] = {
-                                    'status': True,
-                                    'duration': elapsed,
-                                    'filename': os.path.basename(self.current_video_filename)
-                                }
                             except Exception as e:
                                 self.get_logger().error(f'❌ 프레임 저장 실패: {e}')
 
@@ -408,15 +381,6 @@ class HEROMainControl(VESCControlNode):
                         control_mode=PKRCJoystickController.MODE_NORMAL
                     )
 
-    def start_web_gui(self):
-        """웹 GUI 시작"""
-        try:
-            self.web_thread = threading.Thread(target=self.web_gui.start, daemon=True)
-            self.web_thread.start()
-            self.get_logger().info('✅ 웹 GUI 서버 시작')
-        except Exception as e:
-            self.get_logger().error(f'❌ 웹 GUI 시작 실패: {e}')
-    
     def start_recording(self):
         """녹화 시작"""
         if self.is_recording:
@@ -479,20 +443,6 @@ class HEROMainControl(VESCControlNode):
             self.get_logger().info(f'📦 파일 크기: {file_size:.2f} MB')
         else:
             self.get_logger().error(f'❌ 파일이 생성되지 않았습니다!')
-        
-        # GUI 상태 업데이트 (완료 플래시)
-        self.web_gui.state['recording'] = {
-            'status': False,
-            'flash': True,  # 파란색 플래시
-            'duration': 0,
-            'filename': ''
-        }
-
-        # 1초 후 flash 끄기
-        def clear_flash():
-            time.sleep(1.0)
-            self.web_gui.state['recording']['flash'] = False
-        threading.Thread(target=clear_flash, daemon=True).start()
 
         self.current_video_filename = None
         self.recording_frame_count = 0
@@ -519,9 +469,6 @@ class HEROMainControl(VESCControlNode):
         self.get_logger().info('=' * 60)
         self.get_logger().info('HERO Robot 제어 시스템 시작 (CAN - 4개 쓰러스터 홀로노믹)')
         self.get_logger().info('=' * 60)
-        self.get_logger().info('')
-        self.get_logger().info('웹 인터페이스:')
-        self.get_logger().info(f'  URL: http://localhost:{self.web_gui.port}')
         self.get_logger().info('')
         self.get_logger().info('VESC CAN 통신 (4개 쓰러스터 홀로노믹):')
         self.get_logger().info('  최대 전류: 8.0A')
@@ -607,13 +554,7 @@ def main(args=None):
                 print('🔵 RGB LED: 파란색 (종료 상태)')
         except:
             pass
-        
-        # 웹 GUI 정리
-        try:
-            node.web_gui.stop()
-        except:
-            pass
-        
+
         # ROS2 종료 (VESCControlNode의 shutdown_node 사용)
         try:
             node.shutdown_node()
