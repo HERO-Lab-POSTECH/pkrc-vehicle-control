@@ -17,9 +17,9 @@ from .relay_control_module import RelayControlModule
 from .lumen_module import LumenController
 from .battery_module import BatteryMonitor
 from .rgb_led_module import BlueRoboticsLED
-from .PKRC_joy_module import PKRCJoystickController
+from .pkrc_joy_module import PKRCJoystickController
 from .hovering_module import HoveringController
-from .PID_control_module import PIDModeController
+from .pid_control_module import PIDModeController
 from .sonar_tilt_module import SonarTiltModule
 import threading
 import cv2
