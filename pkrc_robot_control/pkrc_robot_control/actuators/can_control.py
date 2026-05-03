@@ -9,13 +9,22 @@ class VESCController:
     여러 VESC를 CAN 통신으로 제어합니다.
     """
     
-    def __init__(self, channel='can0', interface='socketcan'):
+    def __init__(self, channel='can0', interface='socketcan', *, logger=None):
         """
         Args:
             channel: CAN 채널 이름 (default: 'can0')
             interface: CAN 인터페이스 타입 (default: 'socketcan')
+            logger: rclpy logger (None 이면 print fallback). Keyword-only.
         """
-        self.bus = can.interface.Bus(channel=channel, interface=interface)
+        self.logger = logger
+        try:
+            self.bus = can.interface.Bus(channel=channel, interface=interface)
+            self._log('info', f'CAN bus 초기화 완료 ({channel})')
+        except (OSError, can.CanError) as e:
+            self.bus = None
+            self._log('error',
+                      f'CAN bus 초기화 실패 ({channel}): {e}. '
+                      '디그레이드 모드로 시작 (CAN 의존 동작 비활성화)')
         
         # VESC CAN ID 매핑 (Decimal ID -> Extended CAN ID)
         self.vesc_can_ids = {
@@ -37,15 +46,24 @@ class VESCController:
         
         # 안전 제한
         self.max_current_limit = 2.0  # 최대 전류 제한 (A)
-    
+
+    def _log(self, level: str, msg: str) -> None:
+        """Log via injected logger if available, else print fallback."""
+        if self.logger is not None:
+            getattr(self.logger, level)(msg)
+        else:
+            print(msg)
+
     def send_current(self, can_id, current):
         """
         특정 VESC에 전류 명령 전송
-        
+
         Args:
             can_id: VESC의 CAN ID (extended format)
             current: 전류값 (A), 음수는 역방향
         """
+        if self.bus is None:
+            return False  # degraded mode: silent skip (init이 이미 에러 로그 1회 출력)
         # 전류를 밀리암페어로 변환 (Big Endian)
         scaled_current = int(current * 1000)
         
@@ -68,7 +86,7 @@ class VESCController:
             self.bus.send(msg)
             return True
         except can.CanError as e:
-            print(f"⚠ CAN 전송 실패 (ID {hex(can_id)}): {e}")
+            self._log('warn', f'CAN 전송 실패 (ID {hex(can_id)}): {e}')
             return False
     
     def set_current(self, vesc_name, current):
@@ -85,11 +103,12 @@ class VESCController:
             
             # 경고 메시지 출력
             if abs(current) > self.max_current_limit:
-                print(f"⚠ {vesc_name}: 전류 제한 적용 ({current:.2f}A → {limited_current:.2f}A)")
-            
+                self._log('warn',
+                          f'{vesc_name}: 전류 제한 적용 ({current:.2f}A → {limited_current:.2f}A)')
+
             self.target_current[vesc_name] = limited_current
         else:
-            print(f"⚠ 알 수 없는 VESC 이름: {vesc_name}")
+            self._log('warn', f'알 수 없는 VESC 이름: {vesc_name}')
     
     def set_group_current(self, vesc_names, current):
         """
@@ -117,6 +136,8 @@ class VESCController:
         램프 제어를 적용하여 실제 전류를 목표 전류로 점진적으로 변경
         이 함수를 주기적으로 호출해야 합니다.
         """
+        if self.bus is None:
+            return  # degraded mode
         for vesc, can_id in self.vesc_can_ids.items():
             target = self.target_current[vesc]
             actual = self.actual_current[vesc]
@@ -164,9 +185,9 @@ class VESCController:
         """
         if limit > 0:
             self.max_current_limit = limit
-            print(f"✓ 최대 전류 제한: {limit}A")
+            self._log('info', f'최대 전류 제한: {limit}A')
         else:
-            print(f"⚠ 잘못된 전류 제한값: {limit}A (양수여야 함)")
+            self._log('warn', f'잘못된 전류 제한값: {limit}A (양수여야 함)')
     
     def get_max_current_limit(self):
         """
@@ -179,6 +200,8 @@ class VESCController:
     
     def shutdown(self):
         """CAN 버스 종료"""
+        if self.bus is None:
+            return
         self.stop_all()
         self.update()  # 정지 명령 전송
         self.bus.shutdown()
@@ -198,8 +221,8 @@ class VESCControlNode(Node):
         """
         super().__init__(node_name)
         
-        # VESC 컨트롤러 초기화
-        self.controller = VESCController()
+        # VESC 컨트롤러 초기화 (로거 주입)
+        self.controller = VESCController(logger=self.get_logger())
         
         # 타이머 생성 (주기적 업데이트)
         timer_period = 1.0 / update_rate
