@@ -305,7 +305,8 @@ def main(args=None):
 
         # Lumen 정리
         try:
-            node.lumen_controller.cleanup()
+            if node.lumen_controller is not None:
+                node.lumen_controller.cleanup()
         except Exception as e:
             node.get_logger().error(f'lumen_controller cleanup 실패: {e}')
 
