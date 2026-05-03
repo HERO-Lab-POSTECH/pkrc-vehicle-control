@@ -44,7 +44,9 @@ class HEROMainControl(VESCControlNode):
         self.web_gui = NullGUI()
 
         # === 하드웨어 모듈 초기화 ===
-        self.relay_controller = RelayControlModule(auto_init=True, web_gui=self.web_gui)
+        self.relay_controller = RelayControlModule(
+            auto_init=True, web_gui=self.web_gui, logger=self.get_logger()
+        )
         try:
             self.lumen_controller = LumenController(pin=32, frequency=50, auto_init=True)  # Pin 32 (hero_ws/control 핀 매핑)
             self.get_logger().info('✅ Lumen 라이트 초기화 완료')
