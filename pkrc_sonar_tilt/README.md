@@ -1,4 +1,4 @@
-# Sonar Tilt Controller
+# pkrc_sonar_tilt
 
 Dynamixel XW540 모터를 이용한 소나 틸트 각도 제어 ROS2 패키지
 
