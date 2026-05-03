@@ -177,7 +177,9 @@ class CommonControls:
         )
 
     def _update_lumen_gui(self, controller):
-        """루먼 밝기 GUI 업데이트"""
+        """루먼 밝기 GUI 업데이트 (lumen=None 이면 무시)"""
+        if self.lumen is None:
+            return
         brightness = self.lumen.get_brightness()
         self.logger.info(f'라이트 밝기: {brightness*100:.0f}%')
         self.gui.update_system(
