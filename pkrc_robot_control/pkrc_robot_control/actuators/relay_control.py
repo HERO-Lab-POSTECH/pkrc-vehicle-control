@@ -71,16 +71,15 @@ class RelayControlModule:
     
     def _update_web_gui(self):
         """웹 GUI에 릴레이 상태 업데이트 (내부 상태 사용)"""
-        if self.web_gui is not None:
-            try:
-                # 내부 상태 변수 사용 (gpioget 호출하면 CH3 상태가 깨짐)
-                self.web_gui.update_relays(
-                    relay_1=self.relay_states['CH1'],
-                    relay_2=self.relay_states['CH2'],
-                    relay_3=self.relay_states['CH3']
-                )
-            except Exception as e:
-                print(f"웹 GUI 업데이트 실패: {e}")
+        try:
+            # 내부 상태 변수 사용 (gpioget 호출하면 CH3 상태가 깨짐)
+            self.web_gui.update_relays(
+                relay_1=self.relay_states['CH1'],
+                relay_2=self.relay_states['CH2'],
+                relay_3=self.relay_states['CH3']
+            )
+        except Exception as e:
+            print(f"웹 GUI 업데이트 실패: {e}")
     
     def initialize(self):
         """모든 릴레이 채널 초기화"""

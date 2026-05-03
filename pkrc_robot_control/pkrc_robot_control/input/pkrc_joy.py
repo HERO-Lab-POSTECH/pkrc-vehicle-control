@@ -292,13 +292,12 @@ class PKRCJoystickController:
                 if self.led:
                     self.led.stop_pattern()
                     self.led.set_green()
-                if self.gui:
-                    self.gui.update_system(
-                        is_armed=self.is_armed,
-                        sensitivity=self.sensitivity_scale,
-                        lumen_brightness=self.lumen.get_brightness(),
-                        control_mode=self.MODE_NORMAL
-                    )
+                self.gui.update_system(
+                    is_armed=self.is_armed,
+                    sensitivity=self.sensitivity_scale,
+                    lumen_brightness=self.lumen.get_brightness(),
+                    control_mode=self.MODE_NORMAL
+                )
 
         # ── RT + A: 호버링 모드 ──────────────────────────────────────
         if a_pressed and not self._prev_rt_a:
@@ -311,23 +310,21 @@ class PKRCJoystickController:
                         self.logger.info('제어 모드: HOVERING (위치 고정)')
                         if self.led:
                             self.led.turn_off()
-                        if self.gui:
-                            self.gui.update_system(
-                                is_armed=self.is_armed,
-                                sensitivity=self.sensitivity_scale,
-                                lumen_brightness=self.lumen.get_brightness(),
-                                control_mode=self.MODE_HOVERING
-                            )
+                        self.gui.update_system(
+                            is_armed=self.is_armed,
+                            sensitivity=self.sensitivity_scale,
+                            lumen_brightness=self.lumen.get_brightness(),
+                            control_mode=self.MODE_HOVERING
+                        )
                     else:
                         self.logger.warn('호버링 전환 실패 (오도메트리 없음) -> 노말 모드 유지')
                         self.control_mode = self.MODE_NORMAL
-                        if self.gui:
-                            self.gui.update_system(
-                                is_armed=self.is_armed,
-                                sensitivity=self.sensitivity_scale,
-                                lumen_brightness=self.lumen.get_brightness(),
-                                control_mode=self.MODE_NORMAL
-                            )
+                        self.gui.update_system(
+                            is_armed=self.is_armed,
+                            sensitivity=self.sensitivity_scale,
+                            lumen_brightness=self.lumen.get_brightness(),
+                            control_mode=self.MODE_NORMAL
+                        )
                 else:
                     self.logger.warn('호버링 컨트롤러 미초기화 -> 노말 모드 유지')
                     self.control_mode = self.MODE_NORMAL
@@ -343,23 +340,21 @@ class PKRCJoystickController:
                         self.logger.info('제어 모드: PID (조이스틱 위치 추종)')
                         if self.led:
                             self.led.turn_off()
-                        if self.gui:
-                            self.gui.update_system(
-                                is_armed=self.is_armed,
-                                sensitivity=self.sensitivity_scale,
-                                lumen_brightness=self.lumen.get_brightness(),
-                                control_mode=self.MODE_PID
-                            )
+                        self.gui.update_system(
+                            is_armed=self.is_armed,
+                            sensitivity=self.sensitivity_scale,
+                            lumen_brightness=self.lumen.get_brightness(),
+                            control_mode=self.MODE_PID
+                        )
                     else:
                         self.logger.warn('PID 모드 전환 실패 (오도메트리 없음) -> 노말 모드 유지')
                         self.control_mode = self.MODE_NORMAL
-                        if self.gui:
-                            self.gui.update_system(
-                                is_armed=self.is_armed,
-                                sensitivity=self.sensitivity_scale,
-                                lumen_brightness=self.lumen.get_brightness(),
-                                control_mode=self.MODE_NORMAL
-                            )
+                        self.gui.update_system(
+                            is_armed=self.is_armed,
+                            sensitivity=self.sensitivity_scale,
+                            lumen_brightness=self.lumen.get_brightness(),
+                            control_mode=self.MODE_NORMAL
+                        )
                 else:
                     self.logger.warn('PID 컨트롤러 미초기화 -> 노말 모드 유지')
                     self.control_mode = self.MODE_NORMAL

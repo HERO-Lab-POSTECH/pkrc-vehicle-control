@@ -118,7 +118,7 @@ class CommonControls:
         # === 녹화 제어 (버튼 8번) ===
         if len(buttons) > self.BTN_SPECIAL_8 and buttons[self.BTN_SPECIAL_8] and not self.prev_buttons[self.BTN_SPECIAL_8]:
             if self.main_node is not None:
-                self.main_node.toggle_recording()
+                self.main_node.camera_mgr.toggle_recording()
 
         # 이전 버튼 상태 저장
         self.prev_buttons = list(buttons)

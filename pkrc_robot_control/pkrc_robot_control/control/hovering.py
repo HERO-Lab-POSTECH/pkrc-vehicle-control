@@ -11,6 +11,8 @@
 import math
 import time
 
+from .pid_utils import SimplePID, quaternion_to_yaw, normalize_angle
+
 # 오도메트리 소스 상수
 ODOM_SOURCE_FASTLIO = 'Fast-LIO'
 ODOM_SOURCE_CARTOGRAPHER = 'Cartographer'
@@ -38,70 +40,6 @@ PARAMS_CARTOGRAPHER = {
     'stabilize_duration': 1.5, # Carto 초기 yaw 튐 대응
 }
 # ────────────────────────────────────────────────────────────────
-
-
-class SimplePID:
-    """간단한 PID 제어기"""
-
-    def __init__(self, kp=1.0, ki=0.0, kd=0.5, output_limit=1.0):
-        self.kp = kp
-        self.ki = ki
-        self.kd = kd
-        self.output_limit = output_limit
-
-        self.integral = 0.0
-        self.prev_error = 0.0
-        self.prev_time = None
-
-    def reset(self):
-        """PID 상태 초기화"""
-        self.integral = 0.0
-        self.prev_error = 0.0
-        self.prev_time = None
-
-    def compute(self, error, current_time=None):
-        """PID 출력 계산"""
-        if current_time is None:
-            current_time = time.time()
-
-        if self.prev_time is None:
-            dt = 0.05  # 기본 20Hz
-        else:
-            dt = current_time - self.prev_time
-            if dt <= 0:
-                dt = 0.05
-
-        # Proportional
-        p = self.kp * error
-
-        # Integral (anti-windup)
-        # 출력이 포화 상태가 아닐 때만 적분 수행
-        if abs(p) < self.output_limit:
-            self.integral += error * dt
-            
-        if self.ki > 0.001:
-            max_integral = self.output_limit / self.ki
-            self.integral = max(-max_integral, min(max_integral, self.integral))
-        i = self.ki * self.integral
-
-        # Derivative
-        d = self.kd * (error - self.prev_error) / dt if dt > 0 else 0.0
-
-        # Output
-        output = p + i + d
-        output = max(-self.output_limit, min(self.output_limit, output))
-
-        self.prev_error = error
-        self.prev_time = current_time
-
-        return output
-
-
-def quaternion_to_yaw(q):
-    """쿼터니언을 Yaw 각도(라디안)로 변환"""
-    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-    return math.atan2(siny_cosp, cosy_cosp)
 
 
 class HoveringController:
@@ -221,12 +159,6 @@ class HoveringController:
         elapsed = current_time - (self.last_fastlio_time if self.odom_source == ODOM_SOURCE_FASTLIO else self.last_carto_time)
         return elapsed > self.odom_timeout_sec
 
-    @staticmethod
-    def normalize_angle(angle):
-        while angle > math.pi: angle -= 2 * math.pi
-        while angle < -math.pi: angle += 2 * math.pi
-        return angle
-
     def compute_and_send_commands(self, sensitivity_scale=0.5):
         if not self.is_active or self.odom_source == ODOM_SOURCE_NONE:
             return
@@ -251,7 +183,7 @@ class HoveringController:
         strafe_error = -dx * sin_yaw + dy * cos_yaw
 
         # Yaw 오차 계산 및 데드밴드 처리
-        yaw_error = self.normalize_angle(self.target_yaw - self.current_yaw)
+        yaw_error = normalize_angle(self.target_yaw - self.current_yaw)
         if self.invert_yaw:
             yaw_error = -yaw_error
             
@@ -310,8 +242,7 @@ class HoveringController:
         self.vesc.set_current('vesc_4', -vesc_4) 
 
         # GUI 업데이트 및 디버그
-        if self.gui:
-            self.gui.update_motors(vesc_1=vesc_1, vesc_2=vesc_2, vesc_3=vesc_3, vesc_4=vesc_4)
+        self.gui.update_motors(vesc_1=vesc_1, vesc_2=vesc_2, vesc_3=vesc_3, vesc_4=vesc_4)
 
         if self.logger:
             dist = math.sqrt(dx*dx + dy*dy)
