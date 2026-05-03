@@ -5,7 +5,7 @@ HERO Lab POSTECH PKRC 로봇 운용 코드. ROS2 Humble (Ubuntu 22.04) on NVIDIA
 ## Packages
 
 - `pkrc_robot_control` — 로봇 메인 컨트롤러 (HEROMainControl, CAN 4-thruster holonomic)
-- `hero_control` — IMU 보정/모니터링 유틸리티
+- `pkrc_imu_utils` — IMU 보정/모니터링 유틸리티
 - `sonar_tilt_controller` — Dynamixel 기반 sonar tilt 제어
 
 ## Bootstrap (새 머신에서)

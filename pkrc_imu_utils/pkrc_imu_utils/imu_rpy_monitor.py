@@ -6,8 +6,8 @@ Subscribes to IMU topics from Microstrain GV7 and displays
 roll, pitch, yaw in degrees with real-time terminal updates.
 
 Usage:
-  ros2 run hero_control imu_rpy_monitor
-  ros2 run hero_control imu_rpy_monitor --ros-args -p use_filter:=true
+  ros2 run pkrc_imu_utils imu_rpy_monitor
+  ros2 run pkrc_imu_utils imu_rpy_monitor --ros-args -p use_filter:=true
 """
 
 import math

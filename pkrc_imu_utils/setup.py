@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'hero_control'
+package_name = 'pkrc_imu_utils'
 
 setup(
     name=package_name,
@@ -24,8 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'imu_rpy_monitor = hero_control.imu_rpy_monitor:main',
-            'imu_calibrate = hero_control.imu_calibrate:main',
+            'imu_rpy_monitor = pkrc_imu_utils.imu_rpy_monitor:main',
+            'imu_calibrate = pkrc_imu_utils.imu_calibrate:main',
         ],
     },
 )
