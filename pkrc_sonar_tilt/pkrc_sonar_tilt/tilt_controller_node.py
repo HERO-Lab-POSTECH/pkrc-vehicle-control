@@ -250,7 +250,7 @@ class SonarTiltControllerNode(Node):
     """소나 틸트 컨트롤러 ROS2 노드"""
 
     def __init__(self):
-        super().__init__('sonar_tilt_controller')
+        super().__init__('sonar_tilt')
 
         # Parameters
         self.declare_parameter('device', '/dev/ttyUSB0')

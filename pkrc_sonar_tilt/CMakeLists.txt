@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(sonar_tilt_controller)
+project(pkrc_sonar_tilt)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -14,7 +14,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install Python executables
 install(PROGRAMS
-  sonar_tilt_controller/tilt_controller_node.py
+  pkrc_sonar_tilt/tilt_controller_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
