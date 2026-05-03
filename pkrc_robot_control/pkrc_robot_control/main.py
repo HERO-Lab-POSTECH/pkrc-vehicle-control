@@ -276,59 +276,59 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info('사용자에 의한 종료')
     finally:
-        print('\n🔄 프로그램 종료 중...')
-        
+        node.get_logger().info('프로그램 종료 중...')
+
         # 시동 OFF
         try:
             node.joystick.disarm_system()
-        except:
-            pass
-        
+        except Exception as e:
+            node.get_logger().error(f'disarm_system 실패: {e}')
+
         # 카메라 정리
         try:
             node.camera_mgr.shutdown()
         except Exception as e:
-            print(f'camera shutdown: {e}')
-        
+            node.get_logger().error(f'camera shutdown 실패: {e}')
+
         # 릴레이 정리
         try:
             node.relay_controller.cleanup()
-        except:
-            pass
-        
+        except Exception as e:
+            node.get_logger().error(f'relay_controller cleanup 실패: {e}')
+
         # Lumen 정리
         try:
             node.lumen_controller.cleanup()
-        except:
-            pass
-        
+        except Exception as e:
+            node.get_logger().error(f'lumen_controller cleanup 실패: {e}')
+
         # 배터리 모니터 정리
         try:
             node.battery_monitor.cleanup()
-        except:
-            pass
-        
+        except Exception as e:
+            node.get_logger().error(f'battery_monitor cleanup 실패: {e}')
+
         # RGB LED 파란색으로 (종료 표시)
         try:
             if node.rgb_led:
                 node.rgb_led.set_blue()
                 time.sleep(0.2)
                 node.rgb_led.spi.close()
-                print('🔵 RGB LED: 파란색 (종료 상태)')
-        except:
-            pass
+                node.get_logger().info('🔵 RGB LED: 파란색 (종료 상태)')
+        except Exception as e:
+            node.get_logger().error(f'rgb_led cleanup 실패: {e}')
 
         # ROS2 종료 (VESCControlNode의 shutdown_node 사용)
         try:
             node.shutdown_node()
         except:
             pass
-        
+
         try:
             rclpy.shutdown()
         except:
             pass
-        
+
         print('✅ 프로그램 종료 완료\n')
 
 
