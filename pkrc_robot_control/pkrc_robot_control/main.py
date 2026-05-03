@@ -45,7 +45,12 @@ class HEROMainControl(VESCControlNode):
 
         # === 하드웨어 모듈 초기화 ===
         self.relay_controller = RelayControlModule(auto_init=True, web_gui=self.web_gui)
-        self.lumen_controller = LumenController(pin=32, frequency=50, auto_init=True)  # Pin 32 (hero_ws/control 핀 매핑)
+        try:
+            self.lumen_controller = LumenController(pin=32, frequency=50, auto_init=True)  # Pin 32 (hero_ws/control 핀 매핑)
+            self.get_logger().info('✅ Lumen 라이트 초기화 완료')
+        except Exception as e:
+            self.get_logger().warn(f'⚠️  Lumen 라이트 초기화 실패: {e}')
+            self.lumen_controller = None
         self.battery_monitor = BatteryMonitor(
             can_channel='can0',
             low_voltage_threshold=13.0,
@@ -196,7 +201,8 @@ class HEROMainControl(VESCControlNode):
                 self.joystick.gui.update_system(
                     is_armed=self.joystick.is_armed,
                     sensitivity=self.joystick.sensitivity_scale,
-                    lumen_brightness=self.joystick.lumen.get_brightness(),
+                    lumen_brightness=(self.joystick.lumen.get_brightness()
+                                      if self.joystick.lumen is not None else 0.0),
                     control_mode=PKRCJoystickController.MODE_NORMAL
                 )
 
@@ -214,7 +220,8 @@ class HEROMainControl(VESCControlNode):
                 self.joystick.gui.update_system(
                     is_armed=self.joystick.is_armed,
                     sensitivity=self.joystick.sensitivity_scale,
-                    lumen_brightness=self.joystick.lumen.get_brightness(),
+                    lumen_brightness=(self.joystick.lumen.get_brightness()
+                                      if self.joystick.lumen is not None else 0.0),
                     control_mode=PKRCJoystickController.MODE_NORMAL
                 )
 
