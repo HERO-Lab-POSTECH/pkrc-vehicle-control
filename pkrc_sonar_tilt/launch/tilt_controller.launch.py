@@ -9,7 +9,7 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     # Package path
-    pkg_dir = get_package_share_directory('sonar_tilt_controller')
+    pkg_dir = get_package_share_directory('pkrc_sonar_tilt')
     config_file = os.path.join(pkg_dir, 'config', 'tilt_controller.yaml')
 
     # Launch arguments
@@ -33,9 +33,9 @@ def generate_launch_description():
 
     # Node
     tilt_controller_node = Node(
-        package='sonar_tilt_controller',
+        package='pkrc_sonar_tilt',
         executable='tilt_controller_node.py',
-        name='sonar_tilt_controller',
+        name='sonar_tilt',
         output='screen',
         parameters=[
             config_file,

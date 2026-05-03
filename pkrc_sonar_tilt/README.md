@@ -1,4 +1,4 @@
-# Sonar Tilt Controller
+# pkrc_sonar_tilt
 
 Dynamixel XW540 모터를 이용한 소나 틸트 각도 제어 ROS2 패키지
 
@@ -7,7 +7,7 @@ Dynamixel XW540 모터를 이용한 소나 틸트 각도 제어 ROS2 패키지
 ```bash
 cd ~/ros2_ws
 source install/setup.bash
-ros2 launch sonar_tilt_controller tilt_controller.launch.py
+ros2 launch pkrc_sonar_tilt tilt_controller.launch.py
 ```
 
 ## 사용법 (새 터미널에서)

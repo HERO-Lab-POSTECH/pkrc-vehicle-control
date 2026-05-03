@@ -1,4 +1,4 @@
-sonar_tilt_controller:
+sonar_tilt:
   ros__parameters:
     device: "/dev/ttyUSB0"  # U2D2 포트 (udev 설정 후 /dev/u2d2 사용 가능)
     baudrate: 57600

@@ -6,7 +6,7 @@ Provides gyro bias capture and device settings management
 through ROS2 service calls.
 
 Usage:
-  ros2 run hero_control imu_calibrate
+  ros2 run pkrc_imu_utils imu_calibrate
 """
 
 import sys
