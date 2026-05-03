@@ -329,13 +329,14 @@ def main(args=None):
         # ROS2 종료 (VESCControlNode의 shutdown_node 사용)
         try:
             node.shutdown_node()
-        except:
-            pass
+        except Exception as e:
+            node.get_logger().error(f'shutdown_node 실패: {e}')
 
         try:
             rclpy.shutdown()
-        except:
-            pass
+        except Exception as e:
+            # logger도 이미 종료된 시점이라 print fallback
+            print(f'rclpy.shutdown 실패: {e}')
 
         print('✅ 프로그램 종료 완료\n')
 
