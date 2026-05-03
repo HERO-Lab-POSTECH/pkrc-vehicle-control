@@ -21,6 +21,7 @@ from .input.pkrc_joy import PKRCJoystickController
 from .control.hovering import HoveringController
 from .control.pid_control import PIDModeController
 from .sensors.sonar_tilt import SonarTiltModule
+from .gui.null_gui import NullGUI
 import threading
 import cv2
 import time
@@ -48,14 +49,18 @@ class HEROMainControl(VESCControlNode):
         # 카메라 장치 경로 (고정 경로 사용)
         self.camera_device = DEFAULT_CAMERA_DEVICE
         
+        # === GUI placeholder (NullGUI: no-op, 미래 통합 Qt GUI로 교체 예정) ===
+        self.web_gui = NullGUI()
+
         # === 하드웨어 모듈 초기화 ===
-        self.relay_controller = RelayControlModule(auto_init=True)
+        self.relay_controller = RelayControlModule(auto_init=True, web_gui=self.web_gui)
         self.lumen_controller = LumenController(pin=32, frequency=50, auto_init=True)  # Pin 32 (hero_ws/control 핀 매핑)
         self.battery_monitor = BatteryMonitor(
             can_channel='can0',
             low_voltage_threshold=13.0,
             critical_voltage_threshold=12.5,
             auto_init=True,
+            web_gui=self.web_gui,
         )
         
         try:
@@ -123,7 +128,7 @@ class HEROMainControl(VESCControlNode):
             relay_controller=self.relay_controller,
             lumen_controller=self.lumen_controller,
             rgb_led=self.rgb_led,
-            web_gui=None,
+            web_gui=self.web_gui,
             logger=self.get_logger(),
             main_node=self,  # 녹화 제어를 위한 메인 노드
             sonar_tilt=self.sonar_tilt,  # 소나 틸트 모듈
@@ -135,6 +140,7 @@ class HEROMainControl(VESCControlNode):
         # === 호버링 컨트롤러 초기화 ===
         self.hovering_controller = HoveringController(
             vesc_controller=self.controller,
+            web_gui=self.web_gui,
             logger=self.get_logger(),
             max_current=8.0,
             enable_yaw_control=True,  # bag 분석 결과: yaw_cmd 방향 반전 필요
@@ -146,6 +152,7 @@ class HEROMainControl(VESCControlNode):
         # === PID 모드 컨트롤러 초기화 ===
         self.pid_controller = PIDModeController(
             vesc_controller=self.controller,
+            web_gui=self.web_gui,
             logger=self.get_logger(),
             max_current=8.0,
             enable_yaw_control=True,
@@ -355,13 +362,12 @@ class HEROMainControl(VESCControlNode):
                 self.joystick.control_mode = PKRCJoystickController.MODE_NORMAL
                 if self.rgb_led:
                     self.rgb_led.set_green()
-                if self.joystick.gui:
-                    self.joystick.gui.update_system(
-                        is_armed=self.joystick.is_armed,
-                        sensitivity=self.joystick.sensitivity_scale,
-                        lumen_brightness=self.joystick.lumen.get_brightness(),
-                        control_mode=PKRCJoystickController.MODE_NORMAL
-                    )
+                self.joystick.gui.update_system(
+                    is_armed=self.joystick.is_armed,
+                    sensitivity=self.joystick.sensitivity_scale,
+                    lumen_brightness=self.joystick.lumen.get_brightness(),
+                    control_mode=PKRCJoystickController.MODE_NORMAL
+                )
 
         # PID 모드 타임아웃
         elif mode == PKRCJoystickController.MODE_PID:
@@ -374,13 +380,12 @@ class HEROMainControl(VESCControlNode):
                 self.joystick.control_mode = PKRCJoystickController.MODE_NORMAL
                 if self.rgb_led:
                     self.rgb_led.set_green()
-                if self.joystick.gui:
-                    self.joystick.gui.update_system(
-                        is_armed=self.joystick.is_armed,
-                        sensitivity=self.joystick.sensitivity_scale,
-                        lumen_brightness=self.joystick.lumen.get_brightness(),
-                        control_mode=PKRCJoystickController.MODE_NORMAL
-                    )
+                self.joystick.gui.update_system(
+                    is_armed=self.joystick.is_armed,
+                    sensitivity=self.joystick.sensitivity_scale,
+                    lumen_brightness=self.joystick.lumen.get_brightness(),
+                    control_mode=PKRCJoystickController.MODE_NORMAL
+                )
 
     def start_recording(self):
         """녹화 시작"""

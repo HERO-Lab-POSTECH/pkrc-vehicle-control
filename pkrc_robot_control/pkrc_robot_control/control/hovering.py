@@ -242,8 +242,7 @@ class HoveringController:
         self.vesc.set_current('vesc_4', -vesc_4) 
 
         # GUI 업데이트 및 디버그
-        if self.gui:
-            self.gui.update_motors(vesc_1=vesc_1, vesc_2=vesc_2, vesc_3=vesc_3, vesc_4=vesc_4)
+        self.gui.update_motors(vesc_1=vesc_1, vesc_2=vesc_2, vesc_3=vesc_3, vesc_4=vesc_4)
 
         if self.logger:
             dist = math.sqrt(dx*dx + dy*dy)
