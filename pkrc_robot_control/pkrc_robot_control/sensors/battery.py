@@ -16,16 +16,18 @@ from typing import Optional, Dict, Callable
 class BatteryMonitor:
     """배터리 전압 모니터링 클래스"""
     
-    def __init__(self, 
-                 can_channel='can0', 
+    def __init__(self,
+                 can_channel='can0',
                  bustype='socketcan',
                  low_voltage_threshold=20.0,
                  critical_voltage_threshold=18.0,
                  auto_init=True,
-                 web_gui=None):
+                 web_gui=None,
+                 *,
+                 logger=None):
         """
         배터리 모니터 초기화
-        
+
         Args:
             can_channel: CAN 채널 이름 (기본: 'can0')
             bustype: CAN 버스 타입 (기본: 'socketcan')
@@ -33,7 +35,9 @@ class BatteryMonitor:
             critical_voltage_threshold: 위험 전압 임계값 (V)
             auto_init: 자동 초기화 여부
             web_gui: 웹 GUI 모듈 (선택적, 없으면 GUI 업데이트 안 함)
+            logger: rclpy logger (None 이면 print fallback). Keyword-only.
         """
+        self.logger = logger
         self.can_channel = can_channel
         self.bustype = bustype
         self.low_voltage_threshold = low_voltage_threshold
@@ -63,15 +67,38 @@ class BatteryMonitor:
         
         if auto_init:
             self.initialize()
-    
+
+    def _log(self, level: str, msg: str) -> None:
+        """Log via injected logger if available, else print fallback.
+
+        Uses explicit if/elif dispatch — rclpy's per-call-site severity
+        tracking raises ValueError when the same source line dispatches
+        multiple severities.
+        """
+        if self.logger is None:
+            print(msg)
+            return
+        if level == 'info':
+            self.logger.info(msg)
+        elif level in ('warn', 'warning'):
+            self.logger.warn(msg)
+        elif level == 'error':
+            self.logger.error(msg)
+        elif level == 'debug':
+            self.logger.debug(msg)
+        elif level == 'fatal':
+            self.logger.fatal(msg)
+        else:
+            self.logger.info(msg)
+
     def initialize(self):
         """CAN 버스 초기화"""
         try:
             self.bus = can.interface.Bus(channel=self.can_channel, bustype=self.bustype)
-            print(f"✅ 배터리 모니터 초기화 완료 (CAN: {self.can_channel})")
+            self._log('info', f'✅ 배터리 모니터 초기화 완료 (CAN: {self.can_channel})')
             return True
         except Exception as e:
-            print(f"❌ 배터리 모니터 초기화 실패: {e}")
+            self._log('error', f'❌ 배터리 모니터 초기화 실패: {e}')
             self.bus = None
             return False
     
@@ -86,9 +113,9 @@ class BatteryMonitor:
             {vesc_id: voltage} 딕셔너리 또는 None
         """
         if not self.bus:
-            print("❌ CAN 버스가 초기화되지 않았습니다")
+            self._log('error', '❌ CAN 버스가 초기화되지 않았습니다')
             return None
-        
+
         try:
             start_time = time.time()
             voltages_read = {}
@@ -114,11 +141,11 @@ class BatteryMonitor:
                 
                 return voltages_read
             else:
-                print("⚠️  타임아웃: 전압 데이터를 받지 못했습니다")
+                self._log('warn', '⚠️  타임아웃: 전압 데이터를 받지 못했습니다')
                 return None
-                
+
         except Exception as e:
-            print(f"❌ 전압 읽기 오류: {e}")
+            self._log('error', f'❌ 전압 읽기 오류: {e}')
             return None
     
     def _parse_voltage_message(self, msg: can.Message) -> Optional[tuple]:
@@ -158,11 +185,11 @@ class BatteryMonitor:
             update_interval: 업데이트 간격 (초)
         """
         if self.is_monitoring:
-            print("⚠️  이미 모니터링 중입니다")
+            self._log('warn', '⚠️  이미 모니터링 중입니다')
             return
-        
+
         if not self.bus:
-            print("❌ CAN 버스가 초기화되지 않았습니다")
+            self._log('error', '❌ CAN 버스가 초기화되지 않았습니다')
             return
         
         self.is_monitoring = True
@@ -172,7 +199,7 @@ class BatteryMonitor:
             daemon=True
         )
         self.monitor_thread.start()
-        print("✅ 배터리 전압 모니터링 시작")
+        self._log('info', '✅ 배터리 전압 모니터링 시작')
     
     def _monitoring_loop(self, update_interval):
         """모니터링 루프"""
@@ -198,7 +225,7 @@ class BatteryMonitor:
                         self._check_voltage_warnings(vesc_id, voltage)
                     
             except Exception as e:
-                print(f"⚠️  모니터링 오류: {e}")
+                self._log('warn', f'⚠️  모니터링 오류: {e}')
                 time.sleep(0.1)
     
     def _check_voltage_warnings(self, vesc_id, voltage):
@@ -246,7 +273,7 @@ class BatteryMonitor:
         with self.lock:
             if self.voltages:
                 voltage_str = " | ".join([f"VESC{id}: {v:.2f}V" for id, v in sorted(self.voltages.items())])
-                print(f"🔋 배터리: {voltage_str}")
+                self._log('info', f'🔋 배터리: {voltage_str}')
     
     def stop_monitoring(self):
         """모니터링 중지"""
@@ -256,7 +283,7 @@ class BatteryMonitor:
         self.is_monitoring = False
         if self.monitor_thread:
             self.monitor_thread.join(timeout=2.0)
-        print("✅ 배터리 전압 모니터링 중지")
+        self._log('info', '✅ 배터리 전압 모니터링 중지')
     
     def get_voltage(self, vesc_id: Optional[int] = None) -> Optional[float]:
         """
@@ -365,7 +392,7 @@ class BatteryMonitor:
         if self.bus:
             self.bus.shutdown()
             self.bus = None
-        print("✅ 배터리 모니터 정리 완료")
+        self._log('info', '✅ 배터리 모니터 정리 완료')
 
 
 # 편의 함수

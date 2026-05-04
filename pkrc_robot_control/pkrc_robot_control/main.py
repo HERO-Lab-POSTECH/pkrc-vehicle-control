@@ -59,6 +59,7 @@ class HEROMainControl(VESCControlNode):
             critical_voltage_threshold=12.5,
             auto_init=True,
             web_gui=self.web_gui,
+            logger=self.get_logger(),
         )
         
         try:
