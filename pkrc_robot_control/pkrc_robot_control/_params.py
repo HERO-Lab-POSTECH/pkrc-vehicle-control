@@ -94,11 +94,12 @@ def load_scalar(node, name: str) -> Any:
 
 def load_pid_dict(node, prefix: str) -> Dict[str, Any]:
     """Load all parameters under ``prefix`` (e.g. 'hovering.fastlio') into
-    a flat dict keyed by the suffix only — matches the legacy
-    ``PARAMS_FASTLIO`` dict shape that hovering/pid_control consume.
+    a flat dict keyed by the suffix only — the shape that
+    hovering/pid_control's ``activate()`` consumes.
 
-    Maps ``yaw_deadband_deg`` -> ``yaw_deadband`` for backward compat with
-    existing dict consumers.
+    Renames ``yaw_deadband_deg`` -> ``yaw_deadband`` and
+    ``joystick_yaw_speed_deg`` -> ``joystick_yaw_speed`` so the in-memory
+    dict keys match what the controllers reference at runtime.
     """
     prefix = prefix.rstrip('.')  # defensive: trailing-dot input would yield '.kp'-style keys
     raw = node.get_parameters_by_prefix(prefix)
