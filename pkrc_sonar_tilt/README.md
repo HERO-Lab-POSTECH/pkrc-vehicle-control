@@ -62,6 +62,21 @@ ros2 service call /sonar/tilt/set_torque std_srvs/srv/SetBool "{data: true}"
 - `motor_id`: 모터 ID (기본: `1`)
 - `publish_rate`: 상태 퍼블리시 주기 (기본: `10.0` Hz)
 - `profile_velocity`: 모터 속도 (기본: `50`)
+- `profile_acceleration`: 모터 가속도 (기본: `100`)
+- `auto_home`: 시작 시 센서 45°로 자동 이동 (기본: `false`)
+
+## Launch 인자
+
+```bash
+# 기본 실행
+ros2 launch pkrc_sonar_tilt tilt_controller.launch.py
+
+# 시작 시 자동 홈잉 (센서 45°로 이동)
+ros2 launch pkrc_sonar_tilt tilt_controller.launch.py auto_home:=true
+
+# 다른 시리얼 포트 사용
+ros2 launch pkrc_sonar_tilt tilt_controller.launch.py device:=/dev/u2d2
+```
 
 ## udev 설정 (권장)
 
@@ -78,3 +93,13 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 - **모터**: Dynamixel XW540-T260
 - **인터페이스**: U2D2 (USB-Serial)
 - **프로토콜**: Dynamixel Protocol 2.0
+- **Operating Mode**: 4 (Extended Position Control) — 한 바퀴 wrap 영향 없음
+- **Drive Mode**: Reverse (물리적 회전 방향 보존)
+- **베벨 기어비**: 2:1 (Z1=15T, Z2=30T)
+
+## 진단
+
+시작 시 INFO 로그에 현재 위치(sensor / motor / raw)와 허용 범위가 출력됩니다.
+범위 밖에서 실행 시 `Position out of operating range: ...` 에러가 발생하며,
+손으로 0~92° 범위 내로 돌리면 회복됩니다. 다중 회전 미끄러짐 같은 catastrophic
+상황에서는 `Severe out-of-range: ...` 메시지가 표시되니 모터 전원을 재투입하세요.
