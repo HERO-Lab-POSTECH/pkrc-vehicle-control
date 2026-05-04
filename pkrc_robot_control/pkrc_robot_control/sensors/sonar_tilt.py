@@ -7,6 +7,7 @@
 """
 
 from std_msgs.msg import Float32
+from .._log import make_logger
 
 
 class SonarTiltModule:
@@ -26,7 +27,7 @@ class SonarTiltModule:
         """
         self.node = ros_node
         self.gui = web_gui
-        self.logger = logger
+        self._log = make_logger(logger)
 
         # 현재 상태
         self.current_angle = 0.0
@@ -58,11 +59,8 @@ class SonarTiltModule:
         self._log_info('  B 버튼: 단계 증가 (0->30->45->60->90)')
 
     def _log_info(self, msg):
-        """로그 출력"""
-        if self.logger:
-            self.logger.info(f'🎯 [Tilt] {msg}')
-        else:
-            print(f'🎯 [Tilt] {msg}')
+        """Info-level log with the [Tilt] prefix."""
+        self._log('info', f'🎯 [Tilt] {msg}')
 
     def _current_angle_callback(self, msg: Float32):
         """현재 각도 수신 콜백"""

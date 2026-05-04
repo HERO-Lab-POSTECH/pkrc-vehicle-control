@@ -347,6 +347,7 @@ def main(args=None):
             # logger도 이미 종료된 시점이라 print fallback
             print(f'rclpy.shutdown 실패: {e}')
 
+        # logger context torn down at this point; print is the only safe option
         print('✅ 프로그램 종료 완료\n')
 
 
