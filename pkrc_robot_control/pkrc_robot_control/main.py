@@ -66,7 +66,10 @@ class HEROMainControl(VESCControlNode):
         )
         
         try:
-            self.rgb_led = BlueRoboticsLED(spi_bus=0, spi_device=0)
+            self.rgb_led = BlueRoboticsLED(
+                    spi_bus=0, spi_device=0,
+                    logger=self.get_logger(),
+                )
             self.rgb_led.set_orange()  # 초기: 주황색 (시동 OFF)
             self.get_logger().info('✅ RGB LED 초기화 완료')
         except Exception as e:

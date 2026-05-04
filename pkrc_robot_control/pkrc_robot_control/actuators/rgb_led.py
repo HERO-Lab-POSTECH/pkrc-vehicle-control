@@ -10,11 +10,13 @@ import spidev
 import time
 import threading
 
+from .._log import make_logger
+
 
 class BlueRoboticsLED:
     """Blue Robotics RGB LED 제어 클래스 (SPI0 전용)"""
     
-    def __init__(self, spi_bus=0, spi_device=0, web_gui=None):
+    def __init__(self, spi_bus=0, spi_device=0, web_gui=None, *, logger=None):
         """
         초기화
         
@@ -22,6 +24,7 @@ class BlueRoboticsLED:
             spi_bus: SPI 버스 (기본: 0)
             spi_device: SPI 디바이스 (기본: 0)
             web_gui: 웹 GUI 모듈 (선택적, 없으면 GUI 업데이트 안 함)
+            logger: rclpy logger (None이면 print fallback). Keyword-only.
         
         연결:
             Red (Vin)       → 5V
@@ -33,7 +36,8 @@ class BlueRoboticsLED:
         self.spi.max_speed_hz = 8000000  # 8MHz (검증됨!)
         self.spi.mode = 0
         self.web_gui = web_gui  # 웹 GUI 참조 저장
-        
+        self._log = make_logger(logger)
+
         # 현재 색상
         self.current_r = 0
         self.current_g = 0
@@ -43,7 +47,7 @@ class BlueRoboticsLED:
         self.pattern_thread = None
         self.pattern_running = False
         
-        print(f"✅ RGB LED 초기화 완료 (SPI{spi_bus}.{spi_device})")
+        self._log('info', f"✅ RGB LED 초기화 완료 (SPI{spi_bus}.{spi_device})")
     
     def _send_color(self, r, g, b):
         """
@@ -246,7 +250,7 @@ class BlueRoboticsLED:
         self.stop_pattern()
         self.turn_off()
         self.spi.close()
-        print("✅ RGB LED 정리 완료")
+        self._log('info', "✅ RGB LED 정리 완료")
 
 
 # 테스트 코드
