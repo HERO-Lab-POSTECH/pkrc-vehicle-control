@@ -1,6 +1,7 @@
 import can
 import rclpy
 from rclpy.node import Node
+from .._log import make_logger
 
 
 class VESCController:
@@ -16,7 +17,7 @@ class VESCController:
             interface: CAN 인터페이스 타입 (default: 'socketcan')
             logger: rclpy logger (None 이면 print fallback). Keyword-only.
         """
-        self.logger = logger
+        self._log = make_logger(logger)
         try:
             self.bus = can.interface.Bus(channel=channel, interface=interface)
             self._log('info', f'CAN bus 초기화 완료 ({channel})')
@@ -46,29 +47,6 @@ class VESCController:
         
         # 안전 제한
         self.max_current_limit = 2.0  # 최대 전류 제한 (A)
-
-    def _log(self, level: str, msg: str) -> None:
-        """Log via injected logger if available, else print fallback.
-
-        Uses explicit if/elif dispatch instead of getattr — rclpy's
-        per-call-site severity tracking raises ValueError when the
-        same source line dispatches multiple severities.
-        """
-        if self.logger is None:
-            print(msg)
-            return
-        if level == 'info':
-            self.logger.info(msg)
-        elif level in ('warn', 'warning'):
-            self.logger.warn(msg)
-        elif level == 'error':
-            self.logger.error(msg)
-        elif level == 'debug':
-            self.logger.debug(msg)
-        elif level == 'fatal':
-            self.logger.fatal(msg)
-        else:
-            self.logger.info(msg)  # unknown level fallback
 
     def send_current(self, can_id, current):
         """
