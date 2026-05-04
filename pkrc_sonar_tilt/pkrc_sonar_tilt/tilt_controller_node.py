@@ -196,15 +196,14 @@ class XW540Controller:
         return position
 
     def is_current_position_safe(self) -> bool:
-        """Interim guard during the Extended-Mode migration.
+        """Sensor-angle-based guard.
 
-        Replaced by the sensor-angle-based guard in the next refactor step
-        (see set_goal_position_degree). Symmetric raw window so signed
-        positions near the limits do not falsely fail.
+        Returns True iff the present sensor angle falls within the
+        OPERATING window (-3° ~ 95°). Use SANITY range separately to
+        catch catastrophic miswiring / multi-turn slip.
         """
-        position = self._get_raw_motor_position()
-        max_safe_position = int(200.0 / 360.0 * 4096)  # ~2276
-        return -max_safe_position <= position <= max_safe_position
+        sensor = self.get_present_position_degree()
+        return self.OPERATING_MIN <= sensor <= self.OPERATING_MAX
 
     def set_goal_position_degree(self, sensor_angle: float) -> tuple[bool, float, str]:
         """목표 센서 각도 설정 (도 단위, 기어비 적용)
@@ -219,14 +218,25 @@ class XW540Controller:
         clamped_angle = self.clamp_sensor_angle(sensor_angle)
 
         with self.lock:
-            # 현재 위치가 범위 밖이면 이동 거부
-            # (한 바퀴 돌아서 가는 것 방지)
             raw_pos = self._get_raw_motor_position()
-            max_safe_position = int(200.0 / 360.0 * 4096)  # ~2276
+            present_motor_deg = raw_pos * 360.0 / 4096.0
+            present_sensor = present_motor_deg / self.GEAR_RATIO
 
-            if not (-max_safe_position <= raw_pos <= max_safe_position):
-                current_motor_deg = raw_pos * 360.0 / 4096.0
-                return False, clamped_angle, f"Position unsafe (interim): motor={current_motor_deg:.1f}° (raw={raw_pos})"
+            # Tier 1: catastrophic — multi-turn slip or miswiring
+            if not (self.SANITY_MIN <= present_sensor <= self.SANITY_MAX):
+                return False, clamped_angle, (
+                    f"Severe out-of-range: sensor={present_sensor:.1f}° "
+                    f"(motor={present_motor_deg:.1f}°, raw={raw_pos}). "
+                    f"Power-cycle the motor and verify mounting before retrying."
+                )
+
+            # Tier 2: outside operating window — recoverable by hand
+            if not (self.OPERATING_MIN <= present_sensor <= self.OPERATING_MAX):
+                return False, clamped_angle, (
+                    f"Position out of operating range: sensor={present_sensor:.1f}° "
+                    f"(motor={present_motor_deg:.1f}°, raw={raw_pos}). "
+                    f"Allowed: 0~92°. Manually rotate within range, then retry."
+                )
 
             motor_angle = self._sensor_angle_to_motor_angle(clamped_angle)
             position = self._angle_to_position(motor_angle)
