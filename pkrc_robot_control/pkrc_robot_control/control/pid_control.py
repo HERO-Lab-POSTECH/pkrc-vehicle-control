@@ -17,30 +17,6 @@ from .hovering import (
     ODOM_SOURCE_FASTLIO, ODOM_SOURCE_CARTOGRAPHER, ODOM_SOURCE_NONE
 )
 
-# ── 소스별 파라미터 ─────────────────────────────────────────────────
-PARAMS_FASTLIO_PID = {
-    'kp': 1.2,  'ki': 0.08, 'kd': 0.6,            # XY PID
-    'yaw_kp': 0.4, 'yaw_ki': 0.01, 'yaw_kd': 0.5,
-    'yaw_limit': 0.7,           # 이동 중 yaw 보정 여유 확보
-    'yaw_scale': 1.0,
-    'yaw_deadband': 4.0,        # deg: 정지 시 이 이내 오차는 yaw 제어 안함 (windup 방지)
-    'stabilize_duration': 1.0,  # sec
-    'joystick_speed': 0.3,      # m/s (왼쪽 스틱 풀입력 시 목표 이동 속도)
-    'joystick_yaw_speed': 25.0, # deg/s (오른쪽 스틱 풀입력 시 yaw 변경 속도)
-}
-
-PARAMS_CARTOGRAPHER_PID = {
-    'kp': 1.5,  'ki': 0.10, 'kd': 0.4,
-    'yaw_kp': 0.3, 'yaw_ki': 0.05, 'yaw_kd': 0.5,
-    'yaw_limit': 0.4,
-    'yaw_scale': 0.3,
-    'yaw_deadband': 4.0,
-    'stabilize_duration': 1.5,
-    'joystick_speed': 0.3,
-    'joystick_yaw_speed': 25.0,
-}
-# ───────────────────────────────────────────────────────────────────
-
 
 class PIDModeController:
     """
@@ -53,7 +29,8 @@ class PIDModeController:
     """
 
     def __init__(self, vesc_controller, gui=None, logger=None, max_current=8.0,
-                 odom_timeout_sec=0.5, enable_yaw_control=True, invert_yaw=False):
+                 odom_timeout_sec=0.5, enable_yaw_control=True, invert_yaw=False,
+                 fastlio_params=None, cartographer_params=None):
         self.vesc = vesc_controller
         self.gui = gui
         self.logger = logger
@@ -61,6 +38,8 @@ class PIDModeController:
         self.odom_timeout_sec = odom_timeout_sec
         self.enable_yaw_control = enable_yaw_control
         self.invert_yaw = invert_yaw
+        self._fastlio_params = fastlio_params or {}
+        self._cartographer_params = cartographer_params or {}
 
         # VESC 최소 동작 전류 (hovering과 동일 값)
         self.min_thrust_current = 1.0
@@ -124,10 +103,10 @@ class PIDModeController:
 
         if fastlio_fresh:
             selected_source = ODOM_SOURCE_FASTLIO
-            params = PARAMS_FASTLIO_PID
+            params = self._fastlio_params
         elif carto_fresh:
             selected_source = ODOM_SOURCE_CARTOGRAPHER
-            params = PARAMS_CARTOGRAPHER_PID
+            params = self._cartographer_params
         else:
             if self.logger:
                 self.logger.warn(
