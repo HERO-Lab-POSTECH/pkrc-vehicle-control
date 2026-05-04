@@ -12,6 +12,8 @@ import threading
 import time
 from typing import Optional, Dict, Callable
 
+from .._log import make_logger
+
 
 class BatteryMonitor:
     """배터리 전압 모니터링 클래스"""
@@ -37,7 +39,7 @@ class BatteryMonitor:
             web_gui: 웹 GUI 모듈 (선택적, 없으면 GUI 업데이트 안 함)
             logger: rclpy logger (None 이면 print fallback). Keyword-only.
         """
-        self.logger = logger
+        self._log = make_logger(logger)
         self.can_channel = can_channel
         self.bustype = bustype
         self.low_voltage_threshold = low_voltage_threshold
@@ -67,29 +69,6 @@ class BatteryMonitor:
         
         if auto_init:
             self.initialize()
-
-    def _log(self, level: str, msg: str) -> None:
-        """Log via injected logger if available, else print fallback.
-
-        Uses explicit if/elif dispatch — rclpy's per-call-site severity
-        tracking raises ValueError when the same source line dispatches
-        multiple severities.
-        """
-        if self.logger is None:
-            print(msg)
-            return
-        if level == 'info':
-            self.logger.info(msg)
-        elif level in ('warn', 'warning'):
-            self.logger.warn(msg)
-        elif level == 'error':
-            self.logger.error(msg)
-        elif level == 'debug':
-            self.logger.debug(msg)
-        elif level == 'fatal':
-            self.logger.fatal(msg)
-        else:
-            self.logger.info(msg)
 
     def initialize(self):
         """CAN 버스 초기화"""
