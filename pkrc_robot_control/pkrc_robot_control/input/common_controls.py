@@ -147,17 +147,18 @@ class CommonControls:
                 self._adjust_sensitivity(controller, increase=False)
                 self.last_dpad_time['down'] = current_time
 
-        # 라이트 밝기 조절 (좌우)
-        if msg.axes[self.DPAD_HORIZONTAL] > 0.5:  # 오른쪽 (D-Pad)
-            if (current_time - self.last_dpad_time['left']) > self.dpad_debounce_time:
-                self.lumen.decrease_brightness(0.1)
-                self._update_lumen_gui(controller)
-                self.last_dpad_time['left'] = current_time
-        elif msg.axes[self.DPAD_HORIZONTAL] < -0.5:  # 왼쪽 (D-Pad)
-            if (current_time - self.last_dpad_time['right']) > self.dpad_debounce_time:
-                self.lumen.increase_brightness(0.1)
-                self._update_lumen_gui(controller)
-                self.last_dpad_time['right'] = current_time
+        # 라이트 밝기 조절 (좌우) — lumen 없으면 무시 (degraded mode)
+        if self.lumen is not None:
+            if msg.axes[self.DPAD_HORIZONTAL] > 0.5:  # 오른쪽 (D-Pad)
+                if (current_time - self.last_dpad_time['left']) > self.dpad_debounce_time:
+                    self.lumen.decrease_brightness(0.1)
+                    self._update_lumen_gui(controller)
+                    self.last_dpad_time['left'] = current_time
+            elif msg.axes[self.DPAD_HORIZONTAL] < -0.5:  # 왼쪽 (D-Pad)
+                if (current_time - self.last_dpad_time['right']) > self.dpad_debounce_time:
+                    self.lumen.increase_brightness(0.1)
+                    self._update_lumen_gui(controller)
+                    self.last_dpad_time['right'] = current_time
 
     def _adjust_sensitivity(self, controller, increase=True):
         """감도 조절"""
@@ -172,11 +173,13 @@ class CommonControls:
         self.gui.update_system(
             is_armed=controller.is_armed,
             sensitivity=controller.sensitivity_scale,
-            lumen_brightness=self.lumen.get_brightness()
+            lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0)
         )
 
     def _update_lumen_gui(self, controller):
-        """루먼 밝기 GUI 업데이트"""
+        """루먼 밝기 GUI 업데이트 (lumen=None 이면 무시)"""
+        if self.lumen is None:
+            return
         brightness = self.lumen.get_brightness()
         self.logger.info(f'라이트 밝기: {brightness*100:.0f}%')
         self.gui.update_system(

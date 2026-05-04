@@ -211,7 +211,7 @@ class PKRCJoystickController:
         self.gui.update_system(
             is_armed=self.is_armed,
             sensitivity=self.sensitivity_scale,
-            lumen_brightness=self.lumen.get_brightness()
+            lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0)
         )
 
     def arm_system(self):
@@ -227,7 +227,7 @@ class PKRCJoystickController:
         self.gui.update_system(
             is_armed=self.is_armed,
             sensitivity=self.sensitivity_scale,
-            lumen_brightness=self.lumen.get_brightness()
+            lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0)
         )
 
     def disarm_system(self):
@@ -251,7 +251,7 @@ class PKRCJoystickController:
         self.gui.update_system(
             is_armed=self.is_armed,
             sensitivity=self.sensitivity_scale,
-            lumen_brightness=self.lumen.get_brightness(),
+            lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0),
             control_mode=self.MODE_NORMAL
         )
 
@@ -295,7 +295,7 @@ class PKRCJoystickController:
                 self.gui.update_system(
                     is_armed=self.is_armed,
                     sensitivity=self.sensitivity_scale,
-                    lumen_brightness=self.lumen.get_brightness(),
+                    lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0),
                     control_mode=self.MODE_NORMAL
                 )
 
@@ -313,7 +313,7 @@ class PKRCJoystickController:
                         self.gui.update_system(
                             is_armed=self.is_armed,
                             sensitivity=self.sensitivity_scale,
-                            lumen_brightness=self.lumen.get_brightness(),
+                            lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0),
                             control_mode=self.MODE_HOVERING
                         )
                     else:
@@ -322,7 +322,7 @@ class PKRCJoystickController:
                         self.gui.update_system(
                             is_armed=self.is_armed,
                             sensitivity=self.sensitivity_scale,
-                            lumen_brightness=self.lumen.get_brightness(),
+                            lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0),
                             control_mode=self.MODE_NORMAL
                         )
                 else:
@@ -343,7 +343,7 @@ class PKRCJoystickController:
                         self.gui.update_system(
                             is_armed=self.is_armed,
                             sensitivity=self.sensitivity_scale,
-                            lumen_brightness=self.lumen.get_brightness(),
+                            lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0),
                             control_mode=self.MODE_PID
                         )
                     else:
@@ -352,7 +352,7 @@ class PKRCJoystickController:
                         self.gui.update_system(
                             is_armed=self.is_armed,
                             sensitivity=self.sensitivity_scale,
-                            lumen_brightness=self.lumen.get_brightness(),
+                            lumen_brightness=(self.lumen.get_brightness() if self.lumen is not None else 0.0),
                             control_mode=self.MODE_NORMAL
                         )
                 else:

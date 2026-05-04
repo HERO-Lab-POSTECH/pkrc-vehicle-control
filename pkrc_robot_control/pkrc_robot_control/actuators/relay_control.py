@@ -9,7 +9,6 @@
 import subprocess
 import sys
 import time
-import signal
 
 try:
     import Jetson.GPIO as GPIO
@@ -23,14 +22,16 @@ except ImportError:
 class RelayControlModule:
     """릴레이 제어 모듈 클래스"""
     
-    def __init__(self, auto_init=True, web_gui=None):
+    def __init__(self, auto_init=True, web_gui=None, *, logger=None):
         """
         릴레이 제어 모듈 초기화
-        
+
         Args:
             auto_init (bool): 자동 초기화 여부 (기본값: True)
             web_gui (WebGUIModule): 웹 GUI 모듈 인스턴스 (기본값: None)
+            logger: rclpy logger (None 이면 print fallback). Keyword-only.
         """
+        self.logger = logger
         self.web_gui = web_gui
         self._cleanup_done = False  # cleanup 중복 호출 방지
         
@@ -63,12 +64,22 @@ class RelayControlModule:
             }
         }
         
-        # 시그널 핸들러 설정
-        signal.signal(signal.SIGINT, self._signal_handler)
-        
+        # 시그널 핸들러는 등록하지 않음: rclpy의 SIGINT 핸들러 + main.py finally가 cleanup 담당
         if auto_init:
             self.initialize()
     
+    def _log(self, level: str, msg: str) -> None:
+        """Log via injected logger if available, else print fallback."""
+        if self.logger is None:
+            print(msg)
+            return
+        if level == 'warn':
+            self.logger.warn(msg)
+        elif level == 'error':
+            self.logger.error(msg)
+        else:
+            self.logger.info(msg)
+
     def _update_web_gui(self):
         """웹 GUI에 릴레이 상태 업데이트 (내부 상태 사용)"""
         try:
@@ -79,23 +90,23 @@ class RelayControlModule:
                 relay_3=self.relay_states['CH3']
             )
         except Exception as e:
-            print(f"웹 GUI 업데이트 실패: {e}")
+            self._log('warn', f'웹 GUI 업데이트 실패: {e}')
     
     def initialize(self):
         """모든 릴레이 채널 초기화"""
-        print("=== 릴레이 제어 모듈 초기화 중... ===")
-        
+        self._log('info', '=== 릴레이 제어 모듈 초기화 중... ===')
+
         # CH1 초기화 (Jetson.GPIO 방식)
         self._init_ch1()
-        
+
         # CH2, CH3 초기화 (복잡한 방식)
         self._init_ch2_ch3()
-        
-        print("=== 릴레이 제어 모듈 초기화 완료 ===")
-        print(f"CH1: GPIO7번 (Jetson.GPIO) - {'✓' if self.ch1_initialized else '✗'}")
-        print(f"CH2: GPIO01 (복잡한 방식) - {'✓' if self.channels['CH2']['initialized'] else '✗'}")
-        print(f"CH3: GPIO11 (복잡한 방식) - {'✓' if self.channels['CH3']['initialized'] else '✗'}")
-        print("모든 릴레이가 OFF 상태로 초기화되었습니다.")
+
+        self._log('info', '=== 릴레이 제어 모듈 초기화 완료 ===')
+        self._log('info', f"CH1: GPIO7번 (Jetson.GPIO) - {'✓' if self.ch1_initialized else '✗'}")
+        self._log('info', f"CH2: GPIO01 (복잡한 방식) - {'✓' if self.channels['CH2']['initialized'] else '✗'}")
+        self._log('info', f"CH3: GPIO11 (복잡한 방식) - {'✓' if self.channels['CH3']['initialized'] else '✗'}")
+        self._log('info', '모든 릴레이가 OFF 상태로 초기화되었습니다.')
         
         # 초기화 완료 후 웹 GUI에 상태 전송
         self._update_web_gui()
@@ -103,17 +114,17 @@ class RelayControlModule:
     def _init_ch1(self):
         """CH1 초기화 (Jetson.GPIO 방식)"""
         if GPIO is None:
-            print("✗ CH1: Jetson.GPIO 라이브러리가 없습니다.")
+            self._log('warn', '✗ CH1: Jetson.GPIO 라이브러리가 없습니다.')
             return
-            
+
         try:
             GPIO.setmode(GPIO.BOARD)
             GPIO.setup(self.CH1_PIN, GPIO.OUT)
             GPIO.output(self.CH1_PIN, GPIO.LOW)
-            print("✓ CH1 (GPIO7) initialized successfully")
+            self._log('info', '✓ CH1 (GPIO7) initialized successfully')
             self.ch1_initialized = True
         except Exception as e:
-            print(f"✗ CH1 initialization failed: {e}")
+            self._log('error', f'✗ CH1 initialization failed: {e}')
             self.ch1_initialized = False
     
     def _init_ch2_ch3(self):
@@ -127,28 +138,28 @@ class RelayControlModule:
         ch = self.channels[channel_id]
         
         if ch['pinmux_addr'] is None or ch['gpio_line'] is None:
-            print(f"{channel_id} ({ch['name']}): 주소/라인 정보 없음 - 건너뜀")
+            self._log('warn', f"{channel_id} ({ch['name']}): 주소/라인 정보 없음 - 건너뜀")
             return False
-            
-        print(f"Initializing {channel_id} ({ch['name']})...")
-        
+
+        self._log('info', f"Initializing {channel_id} ({ch['name']})...")
+
         # pinmux 설정
         cmd = f"sudo busybox devmem {ch['pinmux_addr']} w {ch['pinmux_value']}"
         result = self.run_command(cmd)
         if result is None:
-            print(f"  Failed to set pinmux for {channel_id}")
+            self._log('error', f'  Failed to set pinmux for {channel_id}')
             return False
-            
+
         # GPIO 초기 LOW 설정
         self.run_command(f"gpioset gpiochip0 {ch['gpio_line']}=0")
-        
+
         # 테스트
         test_val = self.run_command(f"gpioget gpiochip0 {ch['gpio_line']}")
         if test_val == "0":
-            print(f"  ✓ {channel_id} initialized successfully")
+            self._log('info', f'  ✓ {channel_id} initialized successfully')
             return True
         else:
-            print(f"  ✗ {channel_id} initialization failed")
+            self._log('error', f'  ✗ {channel_id} initialization failed')
             return False
     
     def run_command(self, cmd, show_error=False):
@@ -158,37 +169,37 @@ class RelayControlModule:
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
             if show_error:
-                print(f"Error: {e}")
+                self._log('error', f'Error: {e}')
             return None
     
     # CH1 제어 (Jetson.GPIO 방식)
     def ch1_on(self):
         """CH1 릴레이 ON"""
         if not self.ch1_initialized:
-            print("CH1 not initialized")
+            self._log('warn', 'CH1 not initialized')
             return False
         if GPIO is None:
-            print("Jetson.GPIO 라이브러리가 없습니다.")
+            self._log('warn', 'Jetson.GPIO 라이브러리가 없습니다.')
             return False
-            
+
         GPIO.output(self.CH1_PIN, GPIO.HIGH)
         self.relay_states['CH1'] = True
-        print("✅ CH1 릴레이 ON (GPIO7)")
+        self._log('info', '✅ CH1 릴레이 ON (GPIO7)')
         self._update_web_gui()
         return True
-    
+
     def ch1_off(self):
         """CH1 릴레이 OFF"""
         if not self.ch1_initialized:
-            print("CH1 not initialized")
+            self._log('warn', 'CH1 not initialized')
             return False
         if GPIO is None:
-            print("Jetson.GPIO 라이브러리가 없습니다.")
+            self._log('warn', 'Jetson.GPIO 라이브러리가 없습니다.')
             return False
-            
+
         GPIO.output(self.CH1_PIN, GPIO.LOW)
         self.relay_states['CH1'] = False
-        print("❌ CH1 릴레이 OFF (GPIO7)")
+        self._log('info', '❌ CH1 릴레이 OFF (GPIO7)')
         self._update_web_gui()
         return True
     
@@ -220,22 +231,22 @@ class RelayControlModule:
         ch = self.channels[channel_id]
         
         if not ch['initialized']:
-            print(f"{channel_id} not initialized")
+            self._log('warn', f'{channel_id} not initialized')
             return False
-            
+
         if value not in [0, 1]:
-            print("Value must be 0 or 1")
+            self._log('error', 'Value must be 0 or 1')
             return False
-            
+
         result = self.run_command(f"gpioset gpiochip0 {ch['gpio_line']}={value}")
         if result is not None:
             state = "HIGH" if value == 1 else "LOW"
             self.relay_states[channel_id] = bool(value)  # 상태 저장
-            print(f"{channel_id} ({ch['name']}): {state}")
+            self._log('info', f"{channel_id} ({ch['name']}): {state}")
             self._update_web_gui()
             return True
         else:
-            print(f"Failed to set {channel_id}")
+            self._log('error', f'Failed to set {channel_id}')
             return False
     
     def _get_complex_channel(self, channel_id):
@@ -269,26 +280,26 @@ class RelayControlModule:
         }
         
         if channel not in channel_map:
-            print(f"Unknown channel: {channel}")
+            self._log('warn', f'Unknown channel: {channel}')
             return False
-        
+
         on_func, off_func = channel_map[channel]
         return on_func() if state else off_func()
-    
+
     def set_all_relays(self, state):
         """
         모든 릴레이를 동일한 상태로 설정
-        
+
         Args:
             state (bool): True=ON, False=OFF
         """
         state_text = "ON" if state else "OFF"
-        print(f"모든 릴레이를 {state_text}으로 설정합니다...")
-        
+        self._log('info', f'모든 릴레이를 {state_text}으로 설정합니다...')
+
         for channel in ['CH1', 'CH2', 'CH3']:
             self.set_relay(channel, state)
-        
-        print(f"✅ 모든 릴레이 {state_text} (CH1, CH2, CH3)")
+
+        self._log('info', f'✅ 모든 릴레이 {state_text} (CH1, CH2, CH3)')
     
     def all_on(self):
         """모든 릴레이 ON (기존 호환성 유지)"""
@@ -300,55 +311,49 @@ class RelayControlModule:
     
     def get_status(self):
         """현재 릴레이 상태 확인"""
-        print("=== 현재 릴레이 상태 ===")
-        
+        self._log('info', '=== 현재 릴레이 상태 ===')
+
         # CH1 상태
         if self.ch1_initialized:
             ch1_val = self.ch1_status()
             ch1_status = "ON" if ch1_val else "OFF"
-            print(f"CH1 (GPIO7): {ch1_status}")
+            self._log('info', f'CH1 (GPIO7): {ch1_status}')
         else:
-            print("CH1 (GPIO7): NOT INITIALIZED")
-        
+            self._log('info', 'CH1 (GPIO7): NOT INITIALIZED')
+
         # CH2, CH3 상태
         for ch_id, ch_info in self.channels.items():
             if ch_info['initialized']:
                 val = self._get_complex_channel(ch_id)
                 state = "ON" if val == 1 else "OFF" if val == 0 else "ERROR"
-                print(f"{ch_id} ({ch_info['name']}): {state}")
+                self._log('info', f"{ch_id} ({ch_info['name']}): {state}")
             else:
-                print(f"{ch_id} ({ch_info['name']}): NOT INITIALIZED")
+                self._log('info', f"{ch_id} ({ch_info['name']}): NOT INITIALIZED")
     
     def cleanup(self):
         """GPIO 정리 (중복 호출 방지)"""
         if self._cleanup_done:
             return  # 이미 정리됨
-        
-        print("GPIO 정리 중...")
+
+        self._log('info', 'GPIO 정리 중...')
         self._cleanup_done = True
-        
+
         # 안전하게 모든 릴레이 OFF
         try:
             self.all_off()
         except Exception as e:
-            print(f"릴레이 OFF 중 오류: {e}")
-        
+            self._log('warn', f'릴레이 OFF 중 오류: {e}')
+
         # CH1 정리 (Jetson.GPIO) - 안전하게 처리
         if self.ch1_initialized and GPIO is not None:
             try:
                 GPIO.cleanup()
                 self.ch1_initialized = False
             except Exception as e:
-                print(f"GPIO cleanup 중 오류 (무시 가능): {e}")
-        
-        print("GPIO 정리 완료")
-    
-    def _signal_handler(self, signum, frame):
-        """시그널 핸들러 (Ctrl+C)"""
-        print("\n프로그램 종료 중...")
-        self.cleanup()
-        sys.exit(0)
+                self._log('warn', f'GPIO cleanup 중 오류 (무시 가능): {e}')
 
+        self._log('info', 'GPIO 정리 완료')
+    
 
 # 사용 예제
 if __name__ == "__main__":
