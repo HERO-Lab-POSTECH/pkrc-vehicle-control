@@ -139,7 +139,7 @@ class HoveringController:
         elapsed = current_time - (self.last_fastlio_time if self.odom_source == ODOM_SOURCE_FASTLIO else self.last_carto_time)
         return elapsed > self.odom_timeout_sec
 
-    def compute_and_send_commands(self, sensitivity_scale=0.5):
+    def compute_and_send_commands(self, sensitivity_scale=0.5) -> None:
         if not self.is_active or self.odom_source == ODOM_SOURCE_NONE:
             return
 

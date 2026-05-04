@@ -242,7 +242,7 @@ class PIDModeController:
 
     # ── 메인 제어 루프 ───────────────────────────────────────────────
 
-    def compute_and_send_commands(self, sensitivity_scale=0.5):
+    def compute_and_send_commands(self, sensitivity_scale=0.5) -> None:
         """
         20Hz 타이머에서 호출
         1. 조이스틱 입력으로 목표 위치/yaw 업데이트
