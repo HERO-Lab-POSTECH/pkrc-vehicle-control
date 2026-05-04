@@ -111,9 +111,10 @@ class XW540Controller:
             )
             time.sleep(0.1)
 
-            # Operating Mode 설정 (위치 제어 모드 = 3)
+            # Operating Mode 4 = Extended Position Control (multi-turn, signed)
+            # Eliminates single-turn wrap-around at sensor limits (0° / 92°)
             self.packet_handler.write1ByteTxRx(
-                self.port_handler, self.motor_id, self.ADDR_OPERATING_MODE, 3
+                self.port_handler, self.motor_id, self.ADDR_OPERATING_MODE, 4
             )
             time.sleep(0.1)
 
@@ -185,25 +186,25 @@ class XW540Controller:
         return self.SENSOR_ANGLE_MIN <= sensor_angle <= self.SENSOR_ANGLE_MAX
 
     def _get_raw_motor_position(self) -> int:
-        """모터 raw position 읽기 (0~4095)"""
+        """모터 raw position 읽기 (Extended Position Mode → signed 32-bit)."""
         position, _, _ = self.packet_handler.read4ByteTxRx(
             self.port_handler, self.motor_id, self.ADDR_PRESENT_POSITION
         )
+        # dynamixel_sdk returns unsigned; sign-extend for Extended mode
+        if position > 0x7FFFFFFF:
+            position -= 0x100000000
         return position
 
     def is_current_position_safe(self) -> bool:
-        """현재 모터 위치가 안전 범위 내인지 확인
+        """Interim guard during the Extended-Mode migration.
 
-        모터 위치 기준:
-        - 안전 범위: 0 ~ 184도 (센서 0~92도) = position 0 ~ 2094
-        - 위험 범위: 185도 이상 (한 바퀴 돌아갈 위험)
+        Replaced by the sensor-angle-based guard in the next refactor step
+        (see set_goal_position_degree). Symmetric raw window so signed
+        positions near the limits do not falsely fail.
         """
         position = self._get_raw_motor_position()
-        # 모터 기준 최대 허용 position (센서 92도 * 기어비 2 = 모터 184도)
-        # 184도 = 184/360 * 4096 = 약 2094
-        # 여유있게 200도(약 2276)까지 허용
-        max_safe_position = int(200.0 / 360.0 * 4096)  # 약 2276
-        return 0 <= position <= max_safe_position
+        max_safe_position = int(200.0 / 360.0 * 4096)  # ~2276
+        return -max_safe_position <= position <= max_safe_position
 
     def set_goal_position_degree(self, sensor_angle: float) -> tuple[bool, float, str]:
         """목표 센서 각도 설정 (도 단위, 기어비 적용)
@@ -221,11 +222,11 @@ class XW540Controller:
             # 현재 위치가 범위 밖이면 이동 거부
             # (한 바퀴 돌아서 가는 것 방지)
             raw_pos = self._get_raw_motor_position()
-            max_safe_position = int(200.0 / 360.0 * 4096)  # 약 2276
+            max_safe_position = int(200.0 / 360.0 * 4096)  # ~2276
 
-            if not (0 <= raw_pos <= max_safe_position):
+            if not (-max_safe_position <= raw_pos <= max_safe_position):
                 current_motor_deg = raw_pos * 360.0 / 4096.0
-                return False, clamped_angle, f"Position unsafe: motor={current_motor_deg:.1f}° (raw={raw_pos})"
+                return False, clamped_angle, f"Position unsafe (interim): motor={current_motor_deg:.1f}° (raw={raw_pos})"
 
             motor_angle = self._sensor_angle_to_motor_angle(clamped_angle)
             position = self._angle_to_position(motor_angle)
@@ -237,11 +238,14 @@ class XW540Controller:
             return result == COMM_SUCCESS, clamped_angle, ""
 
     def get_present_position_degree(self) -> float:
-        """현재 센서 각도 읽기 (도 단위, 기어비 적용)"""
+        """현재 센서 각도 읽기 (도 단위, 기어비 적용, signed)."""
         with self.lock:
             position, _, _ = self.packet_handler.read4ByteTxRx(
                 self.port_handler, self.motor_id, self.ADDR_PRESENT_POSITION
             )
+            # Sign-extend for Extended Position Mode
+            if position > 0x7FFFFFFF:
+                position -= 0x100000000
             motor_angle = self._position_to_angle(position)
             return self._motor_angle_to_sensor_angle(motor_angle)
 
