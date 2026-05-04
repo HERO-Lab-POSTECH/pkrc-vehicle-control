@@ -1,0 +1,72 @@
+# pkrc_robot_control parameter overrides.
+# Values in this file MUST match _params.PARAM_DEFAULTS bit-exact when committed
+# (enforced by test_params_default_match.py). Operators may copy this file and
+# edit values for tuned launches:
+#   ros2 launch pkrc_robot_control pkrc_main.launch.py params_file:=/path/to/tuned.yaml
+hero_main_control:
+  ros__parameters:
+    # Battery thresholds (V)
+    battery.low_voltage_threshold: 13.0
+    battery.critical_voltage_threshold: 12.5
+
+    # Joystick scalars
+    joystick.deadzone: 0.05
+    joystick.max_current: 8.0
+    joystick.joy_timeout: 0.2
+
+    # Mode-shared settings
+    odom_timeout_sec: 0.5
+    enable_yaw_control: true
+    invert_yaw: true
+
+    # Hovering — Fast-LIO source
+    hovering.fastlio.kp: 1.2
+    hovering.fastlio.ki: 0.08
+    hovering.fastlio.kd: 0.6
+    hovering.fastlio.yaw_kp: 1.5
+    hovering.fastlio.yaw_ki: 0.05
+    hovering.fastlio.yaw_kd: 0.6
+    hovering.fastlio.yaw_limit: 1.0
+    hovering.fastlio.yaw_scale: 1.0
+    hovering.fastlio.yaw_deadband_deg: 2.0
+    hovering.fastlio.stabilize_duration: 1.5
+
+    # Hovering — Cartographer source
+    hovering.cartographer.kp: 1.5
+    hovering.cartographer.ki: 0.10
+    hovering.cartographer.kd: 0.4
+    hovering.cartographer.yaw_kp: 0.8
+    hovering.cartographer.yaw_ki: 0.05
+    hovering.cartographer.yaw_kd: 1.0
+    hovering.cartographer.yaw_limit: 1.0
+    hovering.cartographer.yaw_scale: 0.5
+    hovering.cartographer.yaw_deadband_deg: 4.0
+    hovering.cartographer.stabilize_duration: 1.5
+
+    # PID mode — Fast-LIO source
+    pid.fastlio.kp: 1.2
+    pid.fastlio.ki: 0.08
+    pid.fastlio.kd: 0.6
+    pid.fastlio.yaw_kp: 0.4
+    pid.fastlio.yaw_ki: 0.01
+    pid.fastlio.yaw_kd: 0.5
+    pid.fastlio.yaw_limit: 0.7
+    pid.fastlio.yaw_scale: 1.0
+    pid.fastlio.yaw_deadband_deg: 4.0
+    pid.fastlio.stabilize_duration: 1.0
+    pid.fastlio.joystick_speed: 0.3
+    pid.fastlio.joystick_yaw_speed_deg: 25.0
+
+    # PID mode — Cartographer source
+    pid.cartographer.kp: 1.5
+    pid.cartographer.ki: 0.10
+    pid.cartographer.kd: 0.4
+    pid.cartographer.yaw_kp: 0.3
+    pid.cartographer.yaw_ki: 0.05
+    pid.cartographer.yaw_kd: 0.5
+    pid.cartographer.yaw_limit: 0.4
+    pid.cartographer.yaw_scale: 0.3
+    pid.cartographer.yaw_deadband_deg: 4.0
+    pid.cartographer.stabilize_duration: 1.5
+    pid.cartographer.joystick_speed: 0.3
+    pid.cartographer.joystick_yaw_speed_deg: 25.0
