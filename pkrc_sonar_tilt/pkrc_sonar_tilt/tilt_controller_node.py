@@ -327,14 +327,36 @@ class SonarTiltControllerNode(Node):
         if self.controller.connect():
             self.get_logger().info('Connected to Dynamixel XW540!')
 
-            # 모터 초기 설정 (Drive Mode Reverse, Profile 등)
-            self.get_logger().info('Setting up motor (Reverse Mode, Gear Ratio 2:1)...')
+            # 모터 초기 설정 (Drive Mode Reverse, Operating Mode 4, Profile)
+            self.get_logger().info('Setting up motor (Reverse Mode, Extended Position, Gear Ratio 2:1)...')
             self.controller.setup_motor(profile_velocity, profile_acceleration)
             self.get_logger().info('Motor setup complete!')
 
-            # 현재 위치 읽어서 목표 각도 초기화
-            self.goal_angle = self.controller.get_present_position_degree()
-            self.get_logger().info(f'Current sensor angle: {self.goal_angle:.2f}°')
+            # 현재 위치 읽어서 목표 각도 초기화 + 진단 로그
+            raw = self.controller._get_raw_motor_position()
+            motor_deg = raw * 360.0 / 4096.0
+            sensor_deg = motor_deg / self.controller.GEAR_RATIO
+            self.goal_angle = sensor_deg
+            self.get_logger().info(
+                f'Initial position: sensor={sensor_deg:.2f}° '
+                f'(motor={motor_deg:.2f}°, raw={raw})'
+            )
+            self.get_logger().info(
+                f'Operating range: {self.controller.SENSOR_ANGLE_MIN:.0f}~'
+                f'{self.controller.SENSOR_ANGLE_MAX:.0f}° '
+                f'(guard: {self.controller.OPERATING_MIN:.0f}~'
+                f'{self.controller.OPERATING_MAX:.0f}°)'
+            )
+            self.get_logger().info(f'Auto-home: {"enabled" if self.auto_home else "disabled"}')
+
+            # Optional auto-home (default off)
+            if self.auto_home:
+                self.get_logger().info('Auto-home: moving to 45°...')
+                success, _, err = self.controller.set_goal_position_degree(45.0)
+                if not success:
+                    self.get_logger().warn(f'Auto-home blocked: {err}')
+                else:
+                    self.goal_angle = 45.0
         else:
             self.get_logger().error('Failed to connect to Dynamixel!')
 
