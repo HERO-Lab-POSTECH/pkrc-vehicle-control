@@ -118,9 +118,12 @@ class HEROMainControl(VESCControlNode):
             vesc_controller=self.controller,
             gui=self.gui,
             logger=self.get_logger(),
-            max_current=8.0,
-            enable_yaw_control=True,  # bag 분석 결과: yaw_cmd 방향 반전 필요
-            invert_yaw=True
+            max_current=_params.load_scalar(self, 'joystick.max_current'),
+            odom_timeout_sec=_params.load_scalar(self, 'odom_timeout_sec'),
+            enable_yaw_control=_params.load_scalar(self, 'enable_yaw_control'),
+            invert_yaw=_params.load_scalar(self, 'invert_yaw'),
+            fastlio_params=_params.load_pid_dict(self, 'hovering.fastlio'),
+            cartographer_params=_params.load_pid_dict(self, 'hovering.cartographer'),
         )
         # PKRC 조이스틱에 호버링 컨트롤러 연결
         self.joystick.hovering = self.hovering_controller
