@@ -10,6 +10,8 @@ import subprocess
 import sys
 import time
 
+from .._log import make_logger
+
 try:
     import Jetson.GPIO as GPIO
 except ImportError:
@@ -31,7 +33,7 @@ class RelayControlModule:
             web_gui (WebGUIModule): 웹 GUI 모듈 인스턴스 (기본값: None)
             logger: rclpy logger (None 이면 print fallback). Keyword-only.
         """
-        self.logger = logger
+        self._log = make_logger(logger)
         self.web_gui = web_gui
         self._cleanup_done = False  # cleanup 중복 호출 방지
         
@@ -68,18 +70,6 @@ class RelayControlModule:
         if auto_init:
             self.initialize()
     
-    def _log(self, level: str, msg: str) -> None:
-        """Log via injected logger if available, else print fallback."""
-        if self.logger is None:
-            print(msg)
-            return
-        if level == 'warn':
-            self.logger.warn(msg)
-        elif level == 'error':
-            self.logger.error(msg)
-        else:
-            self.logger.info(msg)
-
     def _update_web_gui(self):
         """웹 GUI에 릴레이 상태 업데이트 (내부 상태 사용)"""
         try:
