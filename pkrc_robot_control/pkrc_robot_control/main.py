@@ -48,7 +48,10 @@ class HEROMainControl(VESCControlNode):
             auto_init=True, web_gui=self.web_gui, logger=self.get_logger()
         )
         try:
-            self.lumen_controller = LumenController(pin=32, frequency=50, auto_init=True)  # Pin 32 (hero_ws/control 핀 매핑)
+            self.lumen_controller = LumenController(
+                pin=32, frequency=50, auto_init=True,
+                logger=self.get_logger(),
+            )  # Pin 32 (hero_ws/control 핀 매핑)
             self.get_logger().info('✅ Lumen 라이트 초기화 완료')
         except Exception as e:
             self.get_logger().warn(f'⚠️  Lumen 라이트 초기화 실패: {e}')

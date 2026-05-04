@@ -9,18 +9,21 @@ import Jetson.GPIO as GPIO
 import time
 import threading
 
+from .._log import make_logger
+
 
 class LumenController:
     """Lumen 라이트 PWM 제어 클래스"""
     
-    def __init__(self, pin=32, frequency=50, auto_init=True):
+    def __init__(self, pin=32, frequency=50, auto_init=True, *, logger=None):
         """
         초기화
-        
+
         Args:
             pin: PWM 출력 핀 번호 (BOARD 모드)
             frequency: PWM 주파수 (Hz) - 서보 신호는 보통 50Hz
             auto_init: 자동으로 GPIO 초기화 여부
+            logger: rclpy logger (None이면 print fallback). Keyword-only.
         """
         self.pin = pin
         self.frequency = frequency
@@ -36,7 +39,10 @@ class LumenController:
         self._animation_thread = None
         self._animation_running = False
         self._stop_animation = False
-        
+
+        # 로거
+        self._log = make_logger(logger)
+
         # GPIO 초기화
         self.pwm = None
         if auto_init:
@@ -52,10 +58,10 @@ class LumenController:
             self.pwm = GPIO.PWM(self.pin, self.frequency)
             self.pwm.start(0)
             
-            print(f"✅ Lumen 라이트 초기화 완료 (핀: {self.pin})")
+            self._log('info', f"✅ Lumen 라이트 초기화 완료 (핀: {self.pin})")
             return True
         except Exception as e:
-            print(f"❌ Lumen 라이트 초기화 실패: {e}")
+            self._log('error', f"❌ Lumen 라이트 초기화 실패: {e}")
             return False
     
     def pulse_to_duty_cycle(self, pulse_us):
@@ -84,7 +90,7 @@ class LumenController:
             duration: 부드러운 전환 시간 (초)
         """
         if self.pwm is None:
-            print("⚠️  PWM이 초기화되지 않았습니다.")
+            self._log('warn', "⚠️  PWM이 초기화되지 않았습니다.")
             return False
         
         # 애니메이션 중지
@@ -223,7 +229,7 @@ class LumenController:
             self._animation_running = False
         
         self._run_animation(_boot_animation)
-        print("🚀 부팅 신호 시작")
+        self._log('info', "🚀 부팅 신호 시작")
     
     def error_signal(self, error_level='warning', duration=3.0):
         """
@@ -271,7 +277,7 @@ class LumenController:
             self._animation_running = False
         
         self._run_animation(_error_animation)
-        print(f"⚠️  오류 신호 시작 (레벨: {error_level})")
+        self._log('warn', f"⚠️  오류 신호 시작 (레벨: {error_level})")
     
     def pulse_pattern(self, min_brightness=0.2, max_brightness=1.0, period=2.0, duration=None):
         """
@@ -309,7 +315,7 @@ class LumenController:
             self._animation_running = False
         
         self._run_animation(_pulse_animation)
-        print("💓 펄스 패턴 시작")
+        self._log('info', "💓 펄스 패턴 시작")
     
     def strobe(self, frequency=5.0, duration=2.0):
         """
@@ -339,7 +345,7 @@ class LumenController:
             self._animation_running = False
         
         self._run_animation(_strobe_animation)
-        print(f"⚡ 스트로브 시작 ({frequency}Hz)")
+        self._log('info', f"⚡ 스트로브 시작 ({frequency}Hz)")
     
     def cleanup(self):
         """정리"""
@@ -350,7 +356,7 @@ class LumenController:
         
         try:
             GPIO.cleanup(self.pin)
-            print("✅ Lumen 라이트 정리 완료")
+            self._log('info', "✅ Lumen 라이트 정리 완료")
         except:
             pass
 
