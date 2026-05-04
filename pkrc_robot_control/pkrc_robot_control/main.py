@@ -41,11 +41,11 @@ class HEROMainControl(VESCControlNode):
         )
         
         # === GUI placeholder (NullGUI: no-op, 미래 통합 Qt GUI로 교체 예정) ===
-        self.web_gui = NullGUI()
+        self.gui = NullGUI()
 
         # === 하드웨어 모듈 초기화 ===
         self.relay_controller = RelayControlModule(
-            auto_init=True, web_gui=self.web_gui, logger=self.get_logger()
+            auto_init=True, gui=self.gui, logger=self.get_logger()
         )
         try:
             self.lumen_controller = LumenController(
@@ -61,7 +61,7 @@ class HEROMainControl(VESCControlNode):
             low_voltage_threshold=13.0,
             critical_voltage_threshold=12.5,
             auto_init=True,
-            web_gui=self.web_gui,
+            gui=self.gui,
             logger=self.get_logger(),
         )
         
@@ -99,7 +99,7 @@ class HEROMainControl(VESCControlNode):
             relay_controller=self.relay_controller,
             lumen_controller=self.lumen_controller,
             rgb_led=self.rgb_led,
-            web_gui=self.web_gui,
+            gui=self.gui,
             logger=self.get_logger(),
             main_node=self,  # 녹화 제어를 위한 메인 노드
             sonar_tilt=self.sonar_tilt,  # 소나 틸트 모듈
@@ -111,7 +111,7 @@ class HEROMainControl(VESCControlNode):
         # === 호버링 컨트롤러 초기화 ===
         self.hovering_controller = HoveringController(
             vesc_controller=self.controller,
-            web_gui=self.web_gui,
+            gui=self.gui,
             logger=self.get_logger(),
             max_current=8.0,
             enable_yaw_control=True,  # bag 분석 결과: yaw_cmd 방향 반전 필요
@@ -123,7 +123,7 @@ class HEROMainControl(VESCControlNode):
         # === PID 모드 컨트롤러 초기화 ===
         self.pid_controller = PIDModeController(
             vesc_controller=self.controller,
-            web_gui=self.web_gui,
+            gui=self.gui,
             logger=self.get_logger(),
             max_current=8.0,
             enable_yaw_control=True,

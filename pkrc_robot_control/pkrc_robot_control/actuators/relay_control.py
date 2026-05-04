@@ -24,17 +24,17 @@ except ImportError:
 class RelayControlModule:
     """릴레이 제어 모듈 클래스"""
     
-    def __init__(self, auto_init=True, web_gui=None, *, logger=None):
+    def __init__(self, auto_init=True, gui=None, *, logger=None):
         """
         릴레이 제어 모듈 초기화
 
         Args:
             auto_init (bool): 자동 초기화 여부 (기본값: True)
-            web_gui (WebGUIModule): 웹 GUI 모듈 인스턴스 (기본값: None)
+            gui: GUI 인터페이스 (NullGUI 또는 미래 통합 Qt GUI)
             logger: rclpy logger (None 이면 print fallback). Keyword-only.
         """
         self._log = make_logger(logger)
-        self.web_gui = web_gui
+        self.gui = gui
         self._cleanup_done = False  # cleanup 중복 호출 방지
         
         # CH1: GPIO7번 (Jetson.GPIO 방식)
@@ -70,17 +70,17 @@ class RelayControlModule:
         if auto_init:
             self.initialize()
     
-    def _update_web_gui(self):
-        """웹 GUI에 릴레이 상태 업데이트 (내부 상태 사용)"""
+    def _update_gui(self):
+        """GUI에 릴레이 상태 업데이트 (내부 상태 사용)"""
         try:
             # 내부 상태 변수 사용 (gpioget 호출하면 CH3 상태가 깨짐)
-            self.web_gui.update_relays(
+            self.gui.update_relays(
                 relay_1=self.relay_states['CH1'],
                 relay_2=self.relay_states['CH2'],
                 relay_3=self.relay_states['CH3']
             )
         except Exception as e:
-            self._log('warn', f'웹 GUI 업데이트 실패: {e}')
+            self._log('warn', f'GUI 업데이트 실패: {e}')
     
     def initialize(self):
         """모든 릴레이 채널 초기화"""
@@ -99,7 +99,7 @@ class RelayControlModule:
         self._log('info', '모든 릴레이가 OFF 상태로 초기화되었습니다.')
         
         # 초기화 완료 후 웹 GUI에 상태 전송
-        self._update_web_gui()
+        self._update_gui()
     
     def _init_ch1(self):
         """CH1 초기화 (Jetson.GPIO 방식)"""
@@ -175,7 +175,7 @@ class RelayControlModule:
         GPIO.output(self.CH1_PIN, GPIO.HIGH)
         self.relay_states['CH1'] = True
         self._log('info', '✅ CH1 릴레이 ON (GPIO7)')
-        self._update_web_gui()
+        self._update_gui()
         return True
 
     def ch1_off(self):
@@ -190,7 +190,7 @@ class RelayControlModule:
         GPIO.output(self.CH1_PIN, GPIO.LOW)
         self.relay_states['CH1'] = False
         self._log('info', '❌ CH1 릴레이 OFF (GPIO7)')
-        self._update_web_gui()
+        self._update_gui()
         return True
     
     def ch1_status(self):
@@ -233,7 +233,7 @@ class RelayControlModule:
             state = "HIGH" if value == 1 else "LOW"
             self.relay_states[channel_id] = bool(value)  # 상태 저장
             self._log('info', f"{channel_id} ({ch['name']}): {state}")
-            self._update_web_gui()
+            self._update_gui()
             return True
         else:
             self._log('error', f'Failed to set {channel_id}')

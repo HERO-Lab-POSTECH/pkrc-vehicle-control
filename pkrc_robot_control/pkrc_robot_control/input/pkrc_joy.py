@@ -43,7 +43,7 @@ class PKRCJoystickController:
                  relay_controller,
                  lumen_controller,
                  rgb_led,
-                 web_gui,
+                 gui,
                  logger,
                  main_node=None,
                  sonar_tilt=None,
@@ -60,7 +60,7 @@ class PKRCJoystickController:
             relay_controller: 릴레이 제어기
             lumen_controller: Lumen 라이트 제어기
             rgb_led: RGB LED 제어기
-            web_gui: 웹 GUI 모듈
+            gui: GUI 인터페이스 (NullGUI 또는 미래 통합 Qt GUI)
             logger: ROS2 로거
             main_node: 메인 노드 (녹화 제어용)
             sonar_tilt: 소나 틸트 모듈
@@ -74,7 +74,7 @@ class PKRCJoystickController:
         self.relay = relay_controller
         self.lumen = lumen_controller
         self.led = rgb_led
-        self.gui = web_gui
+        self.gui = gui
         self.logger = logger
         self.main_node = main_node
         self.sonar_tilt = sonar_tilt
@@ -121,7 +121,7 @@ class PKRCJoystickController:
         self.common = CommonControls(
             relay_controller=relay_controller,
             lumen_controller=lumen_controller,
-            web_gui=web_gui,
+            gui=gui,
             logger=logger,
             main_node=main_node,
             sensitivity_step=sensitivity_step,

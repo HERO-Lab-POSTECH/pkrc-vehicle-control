@@ -16,17 +16,17 @@ class SonarTiltModule:
     # 각도 단계 (0, 30, 45, 60, 90)
     ANGLE_STEPS = [0.0, 30.0, 45.0, 60.0, 90.0]
 
-    def __init__(self, ros_node, web_gui=None, logger=None):
+    def __init__(self, ros_node, gui=None, logger=None):
         """
         초기화
 
         Args:
             ros_node: ROS2 노드 (publisher/subscriber 생성용)
-            web_gui: WebGUIModule 인스턴스
+            gui: GUI 인터페이스 (NullGUI 또는 미래 통합 Qt GUI)
             logger: ROS2 로거
         """
         self.node = ros_node
-        self.gui = web_gui
+        self.gui = gui
         self._log = make_logger(logger)
 
         # 현재 상태

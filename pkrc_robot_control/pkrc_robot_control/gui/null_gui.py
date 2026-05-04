@@ -1,6 +1,6 @@
 """Null Object pattern for the GUI dependency.
 
-기존 코드는 `web_gui` 파라미터를 받아 `update_system / update_motors / update_joystick /
+기존 코드는 `gui` 파라미터를 받아 `update_system / update_motors / update_joystick /
 update_relays` 4개 메서드를 호출. 통합 Qt GUI(Jetson→Laptop)가 도입되기 전까지 no-op
 placeholder로 주입한다. 호출 site에서 `if self.gui:` 가드를 제거할 수 있어 코드 단순화.
 

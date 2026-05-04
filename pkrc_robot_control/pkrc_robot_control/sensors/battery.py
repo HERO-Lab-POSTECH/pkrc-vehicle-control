@@ -24,7 +24,7 @@ class BatteryMonitor:
                  low_voltage_threshold=20.0,
                  critical_voltage_threshold=18.0,
                  auto_init=True,
-                 web_gui=None,
+                 gui=None,
                  *,
                  logger=None):
         """
@@ -36,7 +36,7 @@ class BatteryMonitor:
             low_voltage_threshold: 저전압 경고 임계값 (V)
             critical_voltage_threshold: 위험 전압 임계값 (V)
             auto_init: 자동 초기화 여부
-            web_gui: 웹 GUI 모듈 (선택적, 없으면 GUI 업데이트 안 함)
+            gui: GUI 인터페이스 (NullGUI 또는 미래 통합 Qt GUI)
             logger: rclpy logger (None 이면 print fallback). Keyword-only.
         """
         self._log = make_logger(logger)
@@ -44,7 +44,7 @@ class BatteryMonitor:
         self.bustype = bustype
         self.low_voltage_threshold = low_voltage_threshold
         self.critical_voltage_threshold = critical_voltage_threshold
-        self.web_gui = web_gui  # 웹 GUI 참조 저장
+        self.gui = gui  # GUI 참조 저장
         
         # 전압 데이터 저장
         self.voltages: Dict[int, float] = {}  # {vesc_id: voltage}
@@ -225,9 +225,9 @@ class BatteryMonitor:
         else:
             status = 'good'
         
-        # 웹 GUI 자동 업데이트 (1분에 한 번만)
+        # GUI 자동 업데이트 (1분에 한 번만)
         current_time = time.time()
-        if self.web_gui and avg_voltage and percentage:
+        if self.gui and avg_voltage and percentage:
             # 1분이 지났거나 처음 업데이트거나 상태가 변경된 경우에만 업데이트
             time_since_last_update = current_time - self.last_gui_update_time
             should_update = (
@@ -238,7 +238,7 @@ class BatteryMonitor:
             
             if should_update:
                 try:
-                    self.web_gui.update_battery(
+                    self.gui.update_battery(
                         voltage=avg_voltage,
                         percentage=percentage,
                         status=status
