@@ -81,7 +81,7 @@ class HEROMainControl(VESCControlNode):
             self.rgb_led = None
         
         # === 배터리 모니터링 시작 ===
-        self.battery_monitor.start_monitoring(update_interval=5.0)
+        self.battery_monitor.start_monitoring(node=self, update_interval=5.0)
 
         # === USB 카메라 (CameraManager: 자체 ROS2 timer 사용) ===
         self.camera_mgr = CameraManager(node=self)
