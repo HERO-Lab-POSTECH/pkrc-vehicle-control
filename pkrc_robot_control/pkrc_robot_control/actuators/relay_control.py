@@ -6,6 +6,7 @@
 - ROS2와 독립적으로 사용 가능한 모듈
 """
 
+import shlex
 import subprocess
 import sys
 import time
@@ -153,9 +154,15 @@ class RelayControlModule:
             return False
     
     def run_command(self, cmd, show_error=False):
-        """명령어 실행"""
+        """Run a shell command, returning stdout or None on failure.
+
+        `cmd` may be a string (split with shlex) or a list. Always invoked
+        with shell=False — no interpolation hazard even if a future caller
+        passes user input.
+        """
+        args = shlex.split(cmd) if isinstance(cmd, str) else cmd
         try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
+            result = subprocess.run(args, capture_output=True, text=True, check=True)
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
             if show_error:
