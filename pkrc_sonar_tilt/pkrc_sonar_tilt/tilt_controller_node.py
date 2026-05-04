@@ -196,11 +196,12 @@ class XW540Controller:
         return position
 
     def is_current_position_safe(self) -> bool:
-        """Sensor-angle-based guard.
+        """OPERATING-tier guard (sensor-angle based).
 
         Returns True iff the present sensor angle falls within the
-        OPERATING window (-3° ~ 95°). Use SANITY range separately to
-        catch catastrophic miswiring / multi-turn slip.
+        OPERATING window (OPERATING_MIN ~ OPERATING_MAX). This does
+        NOT check the SANITY tier — that check lives inside
+        set_goal_position_degree() and surfaces via its return value.
         """
         sensor = self.get_present_position_degree()
         return self.OPERATING_MIN <= sensor <= self.OPERATING_MAX
