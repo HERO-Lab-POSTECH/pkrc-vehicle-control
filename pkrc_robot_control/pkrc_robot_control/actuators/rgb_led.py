@@ -10,18 +10,21 @@ import spidev
 import time
 import threading
 
+from .._log import make_logger
+
 
 class BlueRoboticsLED:
     """Blue Robotics RGB LED 제어 클래스 (SPI0 전용)"""
     
-    def __init__(self, spi_bus=0, spi_device=0, web_gui=None):
+    def __init__(self, spi_bus=0, spi_device=0, gui=None, *, logger=None):
         """
         초기화
-        
+
         Args:
             spi_bus: SPI 버스 (기본: 0)
             spi_device: SPI 디바이스 (기본: 0)
-            web_gui: 웹 GUI 모듈 (선택적, 없으면 GUI 업데이트 안 함)
+            gui: GUI 인터페이스 (NullGUI 또는 미래 통합 Qt GUI)
+            logger: rclpy logger (None이면 print fallback). Keyword-only.
         
         연결:
             Red (Vin)       → 5V
@@ -32,8 +35,9 @@ class BlueRoboticsLED:
         self.spi.open(spi_bus, spi_device)
         self.spi.max_speed_hz = 8000000  # 8MHz (검증됨!)
         self.spi.mode = 0
-        self.web_gui = web_gui  # 웹 GUI 참조 저장
-        
+        self.gui = gui  # GUI 참조 저장
+        self._log = make_logger(logger)
+
         # 현재 색상
         self.current_r = 0
         self.current_g = 0
@@ -43,7 +47,7 @@ class BlueRoboticsLED:
         self.pattern_thread = None
         self.pattern_running = False
         
-        print(f"✅ RGB LED 초기화 완료 (SPI{spi_bus}.{spi_device})")
+        self._log('info', f"✅ RGB LED 초기화 완료 (SPI{spi_bus}.{spi_device})")
     
     def _send_color(self, r, g, b):
         """
@@ -91,10 +95,10 @@ class BlueRoboticsLED:
         self.current_b = b
         self._send_color(r, g, b)
         
-        # 웹 GUI 자동 업데이트
-        if self.web_gui and color_name and web_color:
+        # GUI 자동 업데이트
+        if self.gui and color_name and web_color:
             try:
-                self.web_gui.update_led(web_color, color_name)
+                self.gui.update_led(web_color, color_name)
             except:
                 pass  # GUI 업데이트 실패해도 LED는 작동
     
@@ -246,93 +250,4 @@ class BlueRoboticsLED:
         self.stop_pattern()
         self.turn_off()
         self.spi.close()
-        print("✅ RGB LED 정리 완료")
-
-
-# 테스트 코드
-if __name__ == '__main__':
-    print("=" * 60)
-    print("🔵 Blue Robotics RGB LED 테스트 (SPI0)")
-    print("=" * 60)
-    print()
-    
-    led = BlueRoboticsLED(spi_bus=0, spi_device=0)
-    
-    try:
-        print("1️⃣  기본 색상 테스트")
-        
-        print("   🔴 빨간색")
-        led.set_red()
-        time.sleep(1.5)
-        
-        print("   🟢 초록색")
-        led.set_green()
-        time.sleep(1.5)
-        
-        print("   🔵 파란색")
-        led.set_blue()
-        time.sleep(1.5)
-        
-        print("   🟡 노란색")
-        led.set_yellow()
-        time.sleep(1.5)
-        
-        print("   ⚪ 흰색")
-        led.set_white()
-        time.sleep(1.5)
-        
-        print("\n2️⃣  밝기 테스트")
-        for brightness in [255, 200, 150, 100, 50]:
-            print(f"   밝기: {brightness}/255")
-            led.set_white(brightness)
-            time.sleep(0.8)
-        
-        print("\n3️⃣  깜빡임 테스트")
-        print("   빨간색 깜빡임")
-        led.blink(255, 0, 0, times=3, interval=0.3)
-        
-        print("\n4️⃣  페이드 테스트")
-        print("   파란색 페이드")
-        led.fade(0, 0, 255, duration=2.0)
-        
-        print("\n5️⃣  연속 패턴 테스트 (5초)")
-        print("   노란색 깜빡임 패턴")
-        led.start_blink_pattern(255, 255, 0, interval=0.3)
-        time.sleep(5)
-        led.stop_pattern()
-        
-        print("\n6️⃣  상태 표시 시뮬레이션")
-        
-        print("   ✅ 정상 (초록색)")
-        led.set_green()
-        time.sleep(2)
-        
-        print("   ⚠️  경고 (노란색 깜빡임)")
-        led.start_blink_pattern(255, 255, 0, interval=0.5)
-        time.sleep(3)
-        led.stop_pattern()
-        
-        print("   🚨 위험 (빨간색 빠른 깜빡임)")
-        led.start_blink_pattern(255, 0, 0, interval=0.15)
-        time.sleep(3)
-        led.stop_pattern()
-        
-        print("   💙 대기 (파란색 페이드)")
-        led.start_fade_pattern(0, 0, 255, duration=1.5)
-        time.sleep(5)
-        led.stop_pattern()
-        
-        print("\n⚫ LED 끄기")
-        led.turn_off()
-        
-        print("\n✅ 테스트 완료!")
-        
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Ctrl+C 감지")
-    except Exception as e:
-        print(f"\n❌ 오류: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        led.cleanup()
-        print("\n" + "=" * 60)
+        self._log('info', "✅ RGB LED 정리 완료")

@@ -52,10 +52,10 @@ class PIDModeController:
     - 오른쪽 스틱 입력: 목표 yaw 변경
     """
 
-    def __init__(self, vesc_controller, web_gui=None, logger=None, max_current=8.0,
+    def __init__(self, vesc_controller, gui=None, logger=None, max_current=8.0,
                  odom_timeout_sec=0.5, enable_yaw_control=True, invert_yaw=False):
         self.vesc = vesc_controller
-        self.gui = web_gui
+        self.gui = gui
         self.logger = logger
         self.max_current = max_current
         self.odom_timeout_sec = odom_timeout_sec

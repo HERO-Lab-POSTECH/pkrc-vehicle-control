@@ -45,11 +45,11 @@ PARAMS_CARTOGRAPHER = {
 class HoveringController:
     """호버링 (위치 고정) 제어기"""
 
-    def __init__(self, vesc_controller, web_gui=None, logger=None, max_current=8.0,
+    def __init__(self, vesc_controller, gui=None, logger=None, max_current=8.0,
                  odom_timeout_sec=0.5, enable_yaw_control=True, invert_yaw=False):
         """초기화"""
         self.vesc = vesc_controller
-        self.gui = web_gui
+        self.gui = gui
         self.logger = logger
         self.max_current = max_current
         self.odom_timeout_sec = odom_timeout_sec

@@ -31,7 +31,7 @@ class CommonControls:
     def __init__(self,
                  relay_controller,
                  lumen_controller,
-                 web_gui,
+                 gui,
                  logger,
                  main_node=None,
                  sensitivity_step=0.1,
@@ -42,7 +42,7 @@ class CommonControls:
         Args:
             relay_controller: 릴레이 제어기
             lumen_controller: Lumen 라이트 제어기
-            web_gui: 웹 GUI 모듈
+            gui: GUI 인터페이스 (NullGUI 또는 미래 통합 Qt GUI)
             logger: ROS2 로거
             main_node: 메인 노드 (녹화 제어용)
             sensitivity_step: 감도 조절 단계
@@ -50,7 +50,7 @@ class CommonControls:
         """
         self.relay = relay_controller
         self.lumen = lumen_controller
-        self.gui = web_gui
+        self.gui = gui
         self.logger = logger
         self.main_node = main_node
 
