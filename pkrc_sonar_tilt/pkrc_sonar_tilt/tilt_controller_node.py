@@ -47,6 +47,14 @@ class XW540Controller:
     SENSOR_ANGLE_MIN = 0.0    # 최소 센서 각도
     SENSOR_ANGLE_MAX = 92.0   # 최대 센서 각도 (모터 184도)
 
+    # Operating range guard: nominal 0~92° plus ±3° margin for hand-positioning
+    OPERATING_MIN = -3.0
+    OPERATING_MAX = 95.0
+
+    # Sanity guard: detects catastrophic miswiring or motor slip
+    SANITY_MIN = -100.0
+    SANITY_MAX = 200.0
+
     def __init__(self, device_name='/dev/ttyUSB0', baudrate=57600, motor_id=1):
         self.device_name = device_name
         self.baudrate = baudrate
@@ -259,6 +267,7 @@ class SonarTiltControllerNode(Node):
         self.declare_parameter('publish_rate', 10.0)  # Hz
         self.declare_parameter('profile_velocity', 200)  # 이동 속도
         self.declare_parameter('profile_acceleration', 100)  # 가속도
+        self.declare_parameter('auto_home', False)
 
         device = self.get_parameter('device').get_parameter_value().string_value
         baudrate = self.get_parameter('baudrate').get_parameter_value().integer_value
@@ -266,6 +275,7 @@ class SonarTiltControllerNode(Node):
         publish_rate = self.get_parameter('publish_rate').get_parameter_value().double_value
         profile_velocity = self.get_parameter('profile_velocity').get_parameter_value().integer_value
         profile_acceleration = self.get_parameter('profile_acceleration').get_parameter_value().integer_value
+        self.auto_home = self.get_parameter('auto_home').get_parameter_value().bool_value
 
         # Motor controller
         self.controller = XW540Controller(device, baudrate, motor_id)
