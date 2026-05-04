@@ -51,7 +51,8 @@ class PKRCJoystickController:
                  sensitivity_scale=0.5,
                  sensitivity_step=0.1,
                  dpad_debounce_time=0.3,
-                 max_current=4.0):
+                 max_current=4.0,
+                 joy_timeout=0.2):
         """
         초기화
 
@@ -69,6 +70,7 @@ class PKRCJoystickController:
             sensitivity_step: 감도 조절 단계
             dpad_debounce_time: D-Pad 디바운스 시간
             max_current: 최대 전류 (A)
+            joy_timeout: 조이 명령 타임아웃 (초). 이 시간 동안 메시지 없으면 정지.
         """
         self.vesc = vesc_controller
         self.relay = relay_controller
@@ -84,7 +86,7 @@ class PKRCJoystickController:
 
         # 조이스틱 타임아웃 (명령이 안 오면 자동 정지)
         self.last_joy_time = 0.0
-        self.joy_timeout = 0.2  # 0.2초 동안 명령이 없으면 정지
+        self.joy_timeout = joy_timeout
         self.sensitivity_scale = sensitivity_scale
         self.sensitivity_step = sensitivity_step
         self.dpad_debounce_time = dpad_debounce_time

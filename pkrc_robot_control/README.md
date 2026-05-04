@@ -44,6 +44,39 @@ source install/setup.bash
 
 For first-time setup (vendored sub-repos), see top-level `README.md`.
 
+## Parameters & launch
+
+The node has 52 declarable ROS 2 parameters covering battery thresholds, joystick scalars, mode-shared toggles, and PID tuning gains for hovering and PID modes (split per odometry source). Defaults are baked into the source via `_params.PARAM_DEFAULTS`; `config/pkrc.yaml` ships the same values for operator visibility.
+
+**Default operation (no tuning):**
+
+```bash
+ros2 run pkrc_robot_control main_control     # or `maincon`
+```
+
+**Tuned operation:**
+
+```bash
+# Use bundled yaml as a starting point:
+cp ~/ros2_ws/install/pkrc_robot_control/share/pkrc_robot_control/config/pkrc.yaml ~/my_tuned.yaml
+# Edit ~/my_tuned.yaml, then:
+ros2 launch pkrc_robot_control pkrc_main.launch.py params_file:=~/my_tuned.yaml
+```
+
+**Parameter groups (counts in parentheses):**
+
+| Prefix | Count | Examples |
+|---|--:|---|
+| `battery.*` | 2 | `low_voltage_threshold`, `critical_voltage_threshold` |
+| `joystick.*` | 3 | `deadzone`, `max_current`, `joy_timeout` |
+| (mode-shared) | 3 | `odom_timeout_sec`, `enable_yaw_control`, `invert_yaw` |
+| `hovering.fastlio.*` | 10 | `kp`, `ki`, `kd`, `yaw_kp`, … |
+| `hovering.cartographer.*` | 10 | (same keys, Cartographer-tuned values) |
+| `pid.fastlio.*` | 12 | hovering keys + `joystick_speed`, `joystick_yaw_speed_deg` |
+| `pid.cartographer.*` | 12 | (same keys, Cartographer-tuned values) |
+
+The `test_params_default_match.py` test enforces that `config/pkrc.yaml` and `_params.PARAM_DEFAULTS` agree bit-exact.
+
 ## Quick troubleshooting
 
 - **`CAN bus 초기화 실패`** — `can0` interface is down. Bring up with `sudo ip link set can0 up type can bitrate 500000`. The node tolerates this and starts in degraded mode.

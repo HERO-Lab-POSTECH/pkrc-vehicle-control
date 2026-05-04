@@ -22,6 +22,7 @@ from .sensors.sonar_tilt import SonarTiltModule
 from .gui.null_gui import NullGUI
 from .sensors.camera import CameraManager
 from .control.odom_router import OdometryRouter
+from . import _params
 import time
 
 
@@ -31,7 +32,10 @@ class HEROMainControl(VESCControlNode):
     def __init__(self):
         # VESCControlNode 초기화 (20Hz 업데이트)
         super().__init__(node_name='hero_main_control', update_rate=20.0)
-        
+
+        # Declare all parameters first; subsequent module construction reads them.
+        _params.declare_all(self)
+
         # 조이스틱 토픽 구독
         self.joy_sub = self.create_subscription(
             Joy,
@@ -58,8 +62,8 @@ class HEROMainControl(VESCControlNode):
             self.lumen_controller = None
         self.battery_monitor = BatteryMonitor(
             can_channel='can0',
-            low_voltage_threshold=13.0,
-            critical_voltage_threshold=12.5,
+            low_voltage_threshold=_params.load_scalar(self, 'battery.low_voltage_threshold'),
+            critical_voltage_threshold=_params.load_scalar(self, 'battery.critical_voltage_threshold'),
             auto_init=True,
             gui=self.gui,
             logger=self.get_logger(),
@@ -103,9 +107,10 @@ class HEROMainControl(VESCControlNode):
             logger=self.get_logger(),
             main_node=self,  # 녹화 제어를 위한 메인 노드
             sonar_tilt=self.sonar_tilt,  # 소나 틸트 모듈
-            deadzone=0.05,  # 조이스틱 데드존 증가 (20%)
+            deadzone=_params.load_scalar(self, 'joystick.deadzone'),
             sensitivity_scale=0.5,
-            max_current=8.0  # 최대 전류 8A
+            max_current=_params.load_scalar(self, 'joystick.max_current'),
+            joy_timeout=_params.load_scalar(self, 'joystick.joy_timeout'),
         )
         
         # === 호버링 컨트롤러 초기화 ===
@@ -113,9 +118,12 @@ class HEROMainControl(VESCControlNode):
             vesc_controller=self.controller,
             gui=self.gui,
             logger=self.get_logger(),
-            max_current=8.0,
-            enable_yaw_control=True,  # bag 분석 결과: yaw_cmd 방향 반전 필요
-            invert_yaw=True
+            max_current=_params.load_scalar(self, 'joystick.max_current'),
+            odom_timeout_sec=_params.load_scalar(self, 'odom_timeout_sec'),
+            enable_yaw_control=_params.load_scalar(self, 'enable_yaw_control'),
+            invert_yaw=_params.load_scalar(self, 'invert_yaw'),
+            fastlio_params=_params.load_pid_dict(self, 'hovering.fastlio'),
+            cartographer_params=_params.load_pid_dict(self, 'hovering.cartographer'),
         )
         # PKRC 조이스틱에 호버링 컨트롤러 연결
         self.joystick.hovering = self.hovering_controller
@@ -125,9 +133,12 @@ class HEROMainControl(VESCControlNode):
             vesc_controller=self.controller,
             gui=self.gui,
             logger=self.get_logger(),
-            max_current=8.0,
-            enable_yaw_control=True,
-            invert_yaw=True
+            max_current=_params.load_scalar(self, 'joystick.max_current'),
+            odom_timeout_sec=_params.load_scalar(self, 'odom_timeout_sec'),
+            enable_yaw_control=_params.load_scalar(self, 'enable_yaw_control'),
+            invert_yaw=_params.load_scalar(self, 'invert_yaw'),
+            fastlio_params=_params.load_pid_dict(self, 'pid.fastlio'),
+            cartographer_params=_params.load_pid_dict(self, 'pid.cartographer'),
         )
         # PKRC 조이스틱에 PID 컨트롤러 연결
         self.joystick.pid_ctrl = self.pid_controller
@@ -160,7 +171,7 @@ class HEROMainControl(VESCControlNode):
         # === 시작 메시지 ===
         self.print_startup_info()
     
-    def _publish_vesc_currents(self):
+    def _publish_vesc_currents(self) -> None:
         """VESC 실제 출력 전류를 토픽으로 발행 (rosbag 기록 및 모니터링용)"""
         status = self.controller.get_current_status()
         msg = Float32MultiArray()
@@ -172,7 +183,7 @@ class HEROMainControl(VESCControlNode):
         ]
         self.vesc_cmd_pub.publish(msg)
 
-    def hovering_update_loop(self):
+    def hovering_update_loop(self) -> None:
         """호버링 제어 루프 (20Hz 타이머)"""
         if (self.joystick.control_mode == PKRCJoystickController.MODE_HOVERING
                 and self.joystick.is_armed):
@@ -181,7 +192,7 @@ class HEROMainControl(VESCControlNode):
             )
         self._publish_vesc_currents()
 
-    def pid_update_loop(self):
+    def pid_update_loop(self) -> None:
         """PID 모드 제어 루프 (20Hz 타이머)"""
         if (self.joystick.control_mode == PKRCJoystickController.MODE_PID
                 and self.joystick.is_armed):
@@ -189,7 +200,7 @@ class HEROMainControl(VESCControlNode):
                 sensitivity_scale=self.joystick.sensitivity_scale
             )
 
-    def odom_timeout_check_loop(self):
+    def odom_timeout_check_loop(self) -> None:
         """오도메트리 타임아웃 체크 루프 (10Hz) - 호버링/PID 중 토픽 끊김 감지"""
         if not self.joystick.is_armed:
             return
@@ -234,12 +245,12 @@ class HEROMainControl(VESCControlNode):
                     control_mode=PKRCJoystickController.MODE_NORMAL
                 )
 
-    def joy_callback(self, msg: Joy):
+    def joy_callback(self, msg: Joy) -> None:
         """조이스틱 콜백 (모든 처리는 joystick 모듈에서)"""
         current_time = self.get_clock().now().nanoseconds / 1e9
         self.joystick.handle_joy_message(msg, current_time)
     
-    def timeout_check_loop(self):
+    def timeout_check_loop(self) -> None:
         """조이스틱 타임아웃 체크 루프"""
         current_time = self.get_clock().now().nanoseconds / 1e9
         self.joystick.check_timeout(current_time)

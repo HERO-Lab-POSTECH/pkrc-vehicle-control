@@ -18,35 +18,13 @@ ODOM_SOURCE_FASTLIO = 'Fast-LIO'
 ODOM_SOURCE_CARTOGRAPHER = 'Cartographer'
 ODOM_SOURCE_NONE = 'None'
 
-# ── 소스별 호버링 파라미터 ───────────────────────────────────────
-# Fast-LIO: 빠른 수렴, 정밀, yaw 제어
-PARAMS_FASTLIO = {
-    'kp': 1.2, 'ki': 0.08, 'kd': 0.6,           # XY PID
-    'yaw_kp': 1.5, 'yaw_ki': 0.05, 'yaw_kd': 0.6, 'yaw_limit': 1.0, # yaw_limit 1.0으로 해제 (힘 극대화)
-    'yaw_scale': 1.0,          
-    'yaw_deadband': 2.0,       # deg: 이 이내는 yaw 제어 안 함 + 적분 리셋 (windup 방지)
-    'stabilize_duration': 1.5, # FastLIO는 빠르게 수렴
-}
-
-# Cartographer: 느린 수렴, 안정적 yaw 제어 (핑퐁 현상 튜닝 완료)
-PARAMS_CARTOGRAPHER = {
-    'kp': 1.5, 'ki': 0.10, 'kd': 0.4,
-    'yaw_kp': 0.8,             # [수정] 1.5 -> 0.8: 밀어붙이는 힘을 줄여서 확 도는 현상 방지
-    'yaw_ki': 0.05, 
-    'yaw_kd': 1.0,             # [수정] 0.6 -> 1.0: 브레이크를 강하게 걸어 오버슈트 방지
-    'yaw_limit': 1.0,          # yaw_limit 1.0으로 해제
-    'yaw_scale': 0.5,          
-    'yaw_deadband': 4.0,       # deg
-    'stabilize_duration': 1.5, # Carto 초기 yaw 튐 대응
-}
-# ────────────────────────────────────────────────────────────────
-
 
 class HoveringController:
     """호버링 (위치 고정) 제어기"""
 
     def __init__(self, vesc_controller, gui=None, logger=None, max_current=8.0,
-                 odom_timeout_sec=0.5, enable_yaw_control=True, invert_yaw=False):
+                 odom_timeout_sec=0.5, enable_yaw_control=True, invert_yaw=False,
+                 fastlio_params=None, cartographer_params=None):
         """초기화"""
         self.vesc = vesc_controller
         self.gui = gui
@@ -55,6 +33,8 @@ class HoveringController:
         self.odom_timeout_sec = odom_timeout_sec
         self.enable_yaw_control = enable_yaw_control
         self.invert_yaw = invert_yaw
+        self._fastlio_params = fastlio_params or {}
+        self._cartographer_params = cartographer_params or {}
 
         self.stabilize_duration = 1.5
         self.activate_time = 0.0
@@ -109,7 +89,7 @@ class HoveringController:
         self.target_x, self.target_y, self.target_yaw = self.current_x, self.current_y, self.current_yaw
 
         # 소스별 파라미터 적용 후 PID 재생성
-        params = PARAMS_FASTLIO if selected_source == ODOM_SOURCE_FASTLIO else PARAMS_CARTOGRAPHER
+        params = self._fastlio_params if selected_source == ODOM_SOURCE_FASTLIO else self._cartographer_params
         self.pid_forward = SimplePID(kp=params['kp'], ki=params['ki'], kd=params['kd'], output_limit=1.0)
         self.pid_strafe  = SimplePID(kp=params['kp'], ki=params['ki'], kd=params['kd'], output_limit=1.0)
         self.pid_yaw     = SimplePID(kp=params['yaw_kp'], ki=params['yaw_ki'], kd=params['yaw_kd'], output_limit=params['yaw_limit'])
@@ -159,7 +139,7 @@ class HoveringController:
         elapsed = current_time - (self.last_fastlio_time if self.odom_source == ODOM_SOURCE_FASTLIO else self.last_carto_time)
         return elapsed > self.odom_timeout_sec
 
-    def compute_and_send_commands(self, sensitivity_scale=0.5):
+    def compute_and_send_commands(self, sensitivity_scale=0.5) -> None:
         if not self.is_active or self.odom_source == ODOM_SOURCE_NONE:
             return
 
