@@ -31,6 +31,12 @@ def generate_launch_description():
         description='Dynamixel motor ID'
     )
 
+    auto_home_arg = DeclareLaunchArgument(
+        'auto_home',
+        default_value='false',
+        description='Auto-move to 45° on startup (default: false)'
+    )
+
     # Node
     tilt_controller_node = Node(
         package='pkrc_sonar_tilt',
@@ -43,6 +49,7 @@ def generate_launch_description():
                 'device': LaunchConfiguration('device'),
                 'baudrate': LaunchConfiguration('baudrate'),
                 'motor_id': LaunchConfiguration('motor_id'),
+                'auto_home': LaunchConfiguration('auto_home'),
             }
         ]
     )
@@ -51,5 +58,6 @@ def generate_launch_description():
         device_arg,
         baudrate_arg,
         motor_id_arg,
+        auto_home_arg,
         tilt_controller_node,
     ])
