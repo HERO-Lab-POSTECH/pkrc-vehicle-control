@@ -22,6 +22,7 @@ from .sensors.sonar_tilt import SonarTiltModule
 from .gui.null_gui import NullGUI
 from .sensors.camera import CameraManager
 from .control.odom_router import OdometryRouter
+from . import _params
 import time
 
 
@@ -31,7 +32,10 @@ class HEROMainControl(VESCControlNode):
     def __init__(self):
         # VESCControlNode 초기화 (20Hz 업데이트)
         super().__init__(node_name='hero_main_control', update_rate=20.0)
-        
+
+        # Declare all parameters first; subsequent module construction reads them.
+        _params.declare_all(self)
+
         # 조이스틱 토픽 구독
         self.joy_sub = self.create_subscription(
             Joy,
@@ -58,8 +62,8 @@ class HEROMainControl(VESCControlNode):
             self.lumen_controller = None
         self.battery_monitor = BatteryMonitor(
             can_channel='can0',
-            low_voltage_threshold=13.0,
-            critical_voltage_threshold=12.5,
+            low_voltage_threshold=_params.load_scalar(self, 'battery.low_voltage_threshold'),
+            critical_voltage_threshold=_params.load_scalar(self, 'battery.critical_voltage_threshold'),
             auto_init=True,
             gui=self.gui,
             logger=self.get_logger(),
@@ -103,9 +107,10 @@ class HEROMainControl(VESCControlNode):
             logger=self.get_logger(),
             main_node=self,  # 녹화 제어를 위한 메인 노드
             sonar_tilt=self.sonar_tilt,  # 소나 틸트 모듈
-            deadzone=0.05,  # 조이스틱 데드존 증가 (20%)
+            deadzone=_params.load_scalar(self, 'joystick.deadzone'),
             sensitivity_scale=0.5,
-            max_current=8.0  # 최대 전류 8A
+            max_current=_params.load_scalar(self, 'joystick.max_current'),
+            joy_timeout=_params.load_scalar(self, 'joystick.joy_timeout'),
         )
         
         # === 호버링 컨트롤러 초기화 ===
