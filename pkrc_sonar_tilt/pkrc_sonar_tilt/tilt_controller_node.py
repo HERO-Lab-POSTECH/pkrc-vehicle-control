@@ -47,6 +47,14 @@ class XW540Controller:
     SENSOR_ANGLE_MIN = 0.0    # 최소 센서 각도
     SENSOR_ANGLE_MAX = 92.0   # 최대 센서 각도 (모터 184도)
 
+    # Operating range guard: nominal 0~92° plus ±3° margin for hand-positioning
+    OPERATING_MIN = -3.0
+    OPERATING_MAX = 95.0
+
+    # Sanity guard: detects catastrophic miswiring or motor slip
+    SANITY_MIN = -100.0
+    SANITY_MAX = 200.0
+
     def __init__(self, device_name='/dev/ttyUSB0', baudrate=57600, motor_id=1):
         self.device_name = device_name
         self.baudrate = baudrate
@@ -103,9 +111,10 @@ class XW540Controller:
             )
             time.sleep(0.1)
 
-            # Operating Mode 설정 (위치 제어 모드 = 3)
+            # Operating Mode 4 = Extended Position Control (multi-turn, signed)
+            # Eliminates single-turn wrap-around at sensor limits (0° / 92°)
             self.packet_handler.write1ByteTxRx(
-                self.port_handler, self.motor_id, self.ADDR_OPERATING_MODE, 3
+                self.port_handler, self.motor_id, self.ADDR_OPERATING_MODE, 4
             )
             time.sleep(0.1)
 
@@ -177,25 +186,25 @@ class XW540Controller:
         return self.SENSOR_ANGLE_MIN <= sensor_angle <= self.SENSOR_ANGLE_MAX
 
     def _get_raw_motor_position(self) -> int:
-        """모터 raw position 읽기 (0~4095)"""
+        """모터 raw position 읽기 (Extended Position Mode → signed 32-bit)."""
         position, _, _ = self.packet_handler.read4ByteTxRx(
             self.port_handler, self.motor_id, self.ADDR_PRESENT_POSITION
         )
+        # dynamixel_sdk returns unsigned; sign-extend for Extended mode
+        if position > 0x7FFFFFFF:
+            position -= 0x100000000
         return position
 
     def is_current_position_safe(self) -> bool:
-        """현재 모터 위치가 안전 범위 내인지 확인
+        """OPERATING-tier guard (sensor-angle based).
 
-        모터 위치 기준:
-        - 안전 범위: 0 ~ 184도 (센서 0~92도) = position 0 ~ 2094
-        - 위험 범위: 185도 이상 (한 바퀴 돌아갈 위험)
+        Returns True iff the present sensor angle falls within the
+        OPERATING window (OPERATING_MIN ~ OPERATING_MAX). This does
+        NOT check the SANITY tier — that check lives inside
+        set_goal_position_degree() and surfaces via its return value.
         """
-        position = self._get_raw_motor_position()
-        # 모터 기준 최대 허용 position (센서 92도 * 기어비 2 = 모터 184도)
-        # 184도 = 184/360 * 4096 = 약 2094
-        # 여유있게 200도(약 2276)까지 허용
-        max_safe_position = int(200.0 / 360.0 * 4096)  # 약 2276
-        return 0 <= position <= max_safe_position
+        sensor = self.get_present_position_degree()
+        return self.OPERATING_MIN <= sensor <= self.OPERATING_MAX
 
     def set_goal_position_degree(self, sensor_angle: float) -> tuple[bool, float, str]:
         """목표 센서 각도 설정 (도 단위, 기어비 적용)
@@ -210,14 +219,25 @@ class XW540Controller:
         clamped_angle = self.clamp_sensor_angle(sensor_angle)
 
         with self.lock:
-            # 현재 위치가 범위 밖이면 이동 거부
-            # (한 바퀴 돌아서 가는 것 방지)
             raw_pos = self._get_raw_motor_position()
-            max_safe_position = int(200.0 / 360.0 * 4096)  # 약 2276
+            present_motor_deg = raw_pos * 360.0 / 4096.0
+            present_sensor = present_motor_deg / self.GEAR_RATIO
 
-            if not (0 <= raw_pos <= max_safe_position):
-                current_motor_deg = raw_pos * 360.0 / 4096.0
-                return False, clamped_angle, f"Position unsafe: motor={current_motor_deg:.1f}° (raw={raw_pos})"
+            # Tier 1: catastrophic — multi-turn slip or miswiring
+            if not (self.SANITY_MIN <= present_sensor <= self.SANITY_MAX):
+                return False, clamped_angle, (
+                    f"Severe out-of-range: sensor={present_sensor:.1f}° "
+                    f"(motor={present_motor_deg:.1f}°, raw={raw_pos}). "
+                    f"Power-cycle the motor and verify mounting before retrying."
+                )
+
+            # Tier 2: outside operating window — recoverable by hand
+            if not (self.OPERATING_MIN <= present_sensor <= self.OPERATING_MAX):
+                return False, clamped_angle, (
+                    f"Position out of operating range: sensor={present_sensor:.1f}° "
+                    f"(motor={present_motor_deg:.1f}°, raw={raw_pos}). "
+                    f"Allowed: 0~92°. Manually rotate within range, then retry."
+                )
 
             motor_angle = self._sensor_angle_to_motor_angle(clamped_angle)
             position = self._angle_to_position(motor_angle)
@@ -229,11 +249,14 @@ class XW540Controller:
             return result == COMM_SUCCESS, clamped_angle, ""
 
     def get_present_position_degree(self) -> float:
-        """현재 센서 각도 읽기 (도 단위, 기어비 적용)"""
+        """현재 센서 각도 읽기 (도 단위, 기어비 적용, signed)."""
         with self.lock:
             position, _, _ = self.packet_handler.read4ByteTxRx(
                 self.port_handler, self.motor_id, self.ADDR_PRESENT_POSITION
             )
+            # Sign-extend for Extended Position Mode
+            if position > 0x7FFFFFFF:
+                position -= 0x100000000
             motor_angle = self._position_to_angle(position)
             return self._motor_angle_to_sensor_angle(motor_angle)
 
@@ -259,6 +282,7 @@ class SonarTiltControllerNode(Node):
         self.declare_parameter('publish_rate', 10.0)  # Hz
         self.declare_parameter('profile_velocity', 200)  # 이동 속도
         self.declare_parameter('profile_acceleration', 100)  # 가속도
+        self.declare_parameter('auto_home', False)
 
         device = self.get_parameter('device').get_parameter_value().string_value
         baudrate = self.get_parameter('baudrate').get_parameter_value().integer_value
@@ -266,6 +290,7 @@ class SonarTiltControllerNode(Node):
         publish_rate = self.get_parameter('publish_rate').get_parameter_value().double_value
         profile_velocity = self.get_parameter('profile_velocity').get_parameter_value().integer_value
         profile_acceleration = self.get_parameter('profile_acceleration').get_parameter_value().integer_value
+        self.auto_home = self.get_parameter('auto_home').get_parameter_value().bool_value
 
         # Motor controller
         self.controller = XW540Controller(device, baudrate, motor_id)
@@ -302,14 +327,36 @@ class SonarTiltControllerNode(Node):
         if self.controller.connect():
             self.get_logger().info('Connected to Dynamixel XW540!')
 
-            # 모터 초기 설정 (Drive Mode Reverse, Profile 등)
-            self.get_logger().info('Setting up motor (Reverse Mode, Gear Ratio 2:1)...')
+            # 모터 초기 설정 (Drive Mode Reverse, Operating Mode 4, Profile)
+            self.get_logger().info('Setting up motor (Reverse Mode, Extended Position, Gear Ratio 2:1)...')
             self.controller.setup_motor(profile_velocity, profile_acceleration)
             self.get_logger().info('Motor setup complete!')
 
-            # 현재 위치 읽어서 목표 각도 초기화
-            self.goal_angle = self.controller.get_present_position_degree()
-            self.get_logger().info(f'Current sensor angle: {self.goal_angle:.2f}°')
+            # 현재 위치 읽어서 목표 각도 초기화 + 진단 로그
+            raw = self.controller._get_raw_motor_position()
+            motor_deg = raw * 360.0 / 4096.0
+            sensor_deg = motor_deg / self.controller.GEAR_RATIO
+            self.goal_angle = sensor_deg
+            self.get_logger().info(
+                f'Initial position: sensor={sensor_deg:.2f}° '
+                f'(motor={motor_deg:.2f}°, raw={raw})'
+            )
+            self.get_logger().info(
+                f'Operating range: {self.controller.SENSOR_ANGLE_MIN:.0f}~'
+                f'{self.controller.SENSOR_ANGLE_MAX:.0f}° '
+                f'(guard: {self.controller.OPERATING_MIN:.0f}~'
+                f'{self.controller.OPERATING_MAX:.0f}°)'
+            )
+            self.get_logger().info(f'Auto-home: {"enabled" if self.auto_home else "disabled"}')
+
+            # Optional auto-home (default off)
+            if self.auto_home:
+                self.get_logger().info('Auto-home: moving to 45°...')
+                success, _, err = self.controller.set_goal_position_degree(45.0)
+                if not success:
+                    self.get_logger().warn(f'Auto-home blocked: {err}')
+                else:
+                    self.goal_angle = 45.0
         else:
             self.get_logger().error('Failed to connect to Dynamixel!')
 

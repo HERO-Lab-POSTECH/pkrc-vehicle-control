@@ -1,7 +1,9 @@
 sonar_tilt:
   ros__parameters:
-    device: "/dev/ttyUSB0"  # U2D2 포트 (udev 설정 후 /dev/u2d2 사용 가능)
+    device: "/dev/ttyUSB0"          # U2D2 포트 (udev 설정 후 /dev/u2d2 사용 가능)
     baudrate: 57600
     motor_id: 1
-    publish_rate: 0.0167  # Hz (약 1분에 1번)
-    profile_velocity: 50  # 모터 이동 속도 (낮을수록 느림)
+    publish_rate: 10.0              # Hz (status publish rate)
+    profile_velocity: 50            # 모터 이동 속도 (낮을수록 느림)
+    profile_acceleration: 100       # 모터 가속도
+    auto_home: false                # true: 시작 시 자동으로 센서 45°로 이동
