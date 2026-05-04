@@ -16,12 +16,15 @@
 ### 방법 1: 한 번만 전압 읽기 (간단)
 
 ```python
-from battery_module import read_battery_voltage_simple
+from pkrc_robot_control.sensors.battery import BatteryMonitor
 
 # 배터리 전압 읽기
-voltage = read_battery_voltage_simple()
-if voltage:
-    print(f"배터리 전압: {voltage:.2f}V")
+bm = BatteryMonitor(can_channel='can0', auto_init=True)
+voltages = bm.read_voltage_once()
+if voltages:
+    avg = sum(voltages.values()) / len(voltages)
+    print(f"배터리 전압: {avg:.2f}V")
+bm.cleanup()
 ```
 
 ### 방법 2: BatteryMonitor 클래스 사용 (고급)
@@ -208,9 +211,9 @@ def critical_voltage_callback(vesc_id: int, voltage: float):
 ## 🧪 테스트
 
 ```bash
-# 모듈 테스트
-cd /home/hero/ros2_ws/hero_ws/control
-python3 battery_module.py
+# 모듈 단독 import 스모크
+source /home/hero/ros2_ws/install/setup.bash
+python3 -c 'from pkrc_robot_control.sensors.battery import BatteryMonitor; print("ok")'
 ```
 
 ## ⚙️ 설정
@@ -243,7 +246,7 @@ sudo ip link set can0 up type can bitrate 500000
 
 ## 📝 예제
 
-전체 예제는 `battery_module.py`의 `__main__` 섹션을 참고하세요.
+위의 "방법 1~4" 섹션을 참고하세요.
 
 ## 🔗 관련 모듈
 
