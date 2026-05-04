@@ -52,8 +52,7 @@ class BatteryMonitor:
         
         # 상태
         self.bus: Optional[can.interface.Bus] = None
-        self.is_monitoring = False
-        self.monitor_thread: Optional[threading.Thread] = None
+        self._timer = None  # rclpy.timer.Timer; assigned by start_monitoring
         
         # 콜백 함수
         self.voltage_callback: Optional[Callable] = None
@@ -156,56 +155,46 @@ class BatteryMonitor:
             # 파싱 오류는 조용히 무시
             return None
     
-    def start_monitoring(self, update_interval=1.0):
-        """
-        실시간 전압 모니터링 시작
-        
+    def start_monitoring(self, node, update_interval=5.0):
+        """Start periodic voltage polling driven by the node's executor.
+
         Args:
-            update_interval: 업데이트 간격 (초)
+            node: rclpy node owning the timer (cancels on shutdown).
+            update_interval: timer period in seconds (default 5.0).
         """
-        if self.is_monitoring:
+        if self._timer is not None:
             self._log('warn', '⚠️  이미 모니터링 중입니다')
             return
-
         if not self.bus:
             self._log('error', '❌ CAN 버스가 초기화되지 않았습니다')
             return
-        
-        self.is_monitoring = True
-        self.monitor_thread = threading.Thread(
-            target=self._monitoring_loop,
-            args=(update_interval,),
-            daemon=True
-        )
-        self.monitor_thread.start()
-        self._log('info', '✅ 배터리 전압 모니터링 시작')
+        self._timer = node.create_timer(update_interval, self._poll_voltage)
+        self._log('info', f'✅ 배터리 전압 모니터링 시작 ({update_interval}s 주기)')
     
-    def _monitoring_loop(self, update_interval):
-        """모니터링 루프"""
-        while self.is_monitoring:
-            try:
-                # CAN 메시지 수신
-                msg = self.bus.recv(timeout=0.1)
-                if msg:
-                    voltage_data = self._parse_voltage_message(msg)
-                    if voltage_data:
-                        vesc_id, voltage = voltage_data
-                        
-                        # 전압 업데이트
-                        with self.lock:
-                            self.voltages[vesc_id] = voltage
-                            self.last_update_time[vesc_id] = time.time()
-                        
-                        # 콜백 호출
-                        if self.voltage_callback:
-                            self.voltage_callback(vesc_id, voltage)
-                        
-                        # 저전압 체크
-                        self._check_voltage_warnings(vesc_id, voltage)
-                    
-            except Exception as e:
-                self._log('warn', f'⚠️  모니터링 오류: {e}')
-                time.sleep(0.1)
+    def _poll_voltage(self):
+        """Timer callback: drain available voltage frames once per tick.
+
+        `read_voltage_once` already handles parsing, the lock, and the
+        `voltages` / `last_update_time` dict updates. We just invoke
+        callbacks for each freshly read voltage.
+
+        Timeout 0.1s matches the original `_monitoring_loop` recv cycle.
+        The previous daemon-thread design released the GIL during recv,
+        so executor latency was zero. Now that `_poll_voltage` runs on
+        the rclpy SingleThreadedExecutor, a longer timeout would block
+        20Hz hovering / pid timers — keep it tight.
+        """
+        try:
+            voltages_read = self.read_voltage_once(timeout=0.1)
+        except Exception as e:
+            self._log('warn', f'⚠️  모니터링 오류: {e}')
+            return
+        if not voltages_read:
+            return
+        for vesc_id, voltage in voltages_read.items():
+            if self.voltage_callback:
+                self.voltage_callback(vesc_id, voltage)
+            self._check_voltage_warnings(vesc_id, voltage)
     
     def _check_voltage_warnings(self, vesc_id, voltage):
         """전압 경고 체크 및 웹 GUI 자동 업데이트 (1분에 한 번)"""
@@ -255,13 +244,11 @@ class BatteryMonitor:
                 self._log('info', f'🔋 배터리: {voltage_str}')
     
     def stop_monitoring(self):
-        """모니터링 중지"""
-        if not self.is_monitoring:
+        """Cancel the monitoring timer (idempotent)."""
+        if self._timer is None:
             return
-        
-        self.is_monitoring = False
-        if self.monitor_thread:
-            self.monitor_thread.join(timeout=2.0)
+        self._timer.cancel()
+        self._timer = None
         self._log('info', '✅ 배터리 전압 모니터링 중지')
     
     def get_voltage(self, vesc_id: Optional[int] = None) -> Optional[float]:
