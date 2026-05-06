@@ -36,6 +36,8 @@ ros2 launch pkrc_sonar_tilt tilt_controller.launch.py
 
 ### 토픽 카탈로그
 
+모든 메시지는 **ROS 2 표준 패키지(`std_msgs`/`sensor_msgs`)** — custom 메시지 패키지 빌드/배포 불필요. 외부 PC가 ROS 2 Humble만 설치돼있으면 그대로 sub 가능.
+
 | 토픽 | 메시지 | 빈도 | 비고 |
 |---|---|---|---|
 | `/pkrc/system/state` | `std_msgs/Float32MultiArray` `[is_armed, sensitivity, lumen_brightness]` | 1 Hz heartbeat | `is_armed`은 0/1로 캐스팅된 bool |
@@ -46,6 +48,51 @@ ros2 launch pkrc_sonar_tilt tilt_controller.launch.py
 | `/camera/image/compressed` | `sensor_msgs/CompressedImage` | 15 Hz | 1280×720 JPEG |
 | `/joy` | `sensor_msgs/Joy` | 50 Hz | 입력 |
 | `/sonar/tilt/{current_angle,goal_angle,is_moving,torque_enabled}` | various | 10 Hz | 기존 |
+
+### 메시지 해석 가이드 (외부 PC sub 코드용)
+
+표준 메시지에 의미를 인코딩한 토픽들 — 인덱스/비트/문자열 약속을 알아야 풀 수 있음.
+
+**`/pkrc/system/state`** — `Float32MultiArray.data` 인덱스:
+```python
+data = msg.data
+is_armed         = bool(data[0])      # 0.0 → False (시동 OFF, LED 주황) / 1.0 → True (시동 ON, LED 초록)
+sensitivity      = float(data[1])     # 0.0 ~ 1.0 (조이스틱 감도)
+lumen_brightness = float(data[2])     # 0.0 ~ 1.0 (Lumen 라이트 밝기)
+```
+
+**`/pkrc/battery/state`** — `sensor_msgs/BatteryState`:
+```python
+voltage    = msg.voltage              # V (단위 그대로)
+percentage = msg.percentage           # 0.0 ~ 1.0 fraction (UI에 표시할 땐 *100)
+health     = msg.power_supply_health  # POWER_SUPPLY_HEALTH_GOOD(1) 정상 / _DEAD(5) critical
+# voltage가 NaN이면 측정 전 또는 CAN 끊김 — UI에서 "—" 표시 권장
+```
+
+**`/pkrc/relays/state`** — `UInt8` 비트마스크:
+```python
+mask = msg.data
+ch1_on = bool(mask & 0b001)   # bit 0
+ch2_on = bool(mask & 0b010)   # bit 1
+ch3_on = bool(mask & 0b100)   # bit 2
+# 예: 0b101 = 5 → CH1 ON, CH2 OFF, CH3 ON
+```
+
+**`/pkrc/led/color`** — `String.data` 문자열 enum:
+```
+"green"  → 시동 ON
+"orange" → 시동 OFF (기본)
+"blue"   → 호버링/PID 모드
+"red"    → 경고
+"off"    → LED 꺼짐
+```
+
+**`/pkrc/motors/cmd_current`** — `Float32MultiArray.data[0..3]`:
+```python
+vesc_1, vesc_2, vesc_3, vesc_4 = msg.data   # 단위: A (Ampere)
+# VESC 1 (오른쪽, 0x101), 2 (뒤쪽, 0x102), 3 (왼쪽, 0x103), 4 (앞쪽, 0x104)
+# 양수 = 정방향 추력, 음수 = 역방향
+```
 
 ### QoS
 
