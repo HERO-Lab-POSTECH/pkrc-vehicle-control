@@ -17,9 +17,10 @@ import json
 
 # ROS2 토픽 발행을 위한 Optional import
 try:
+    import numpy as np
     import rclpy
     from rclpy.node import Node
-    from sensor_msgs.msg import BatteryState
+    from sensor_msgs.msg import BatteryState, CompressedImage
     from std_msgs.msg import Float32, Float32MultiArray, String
     ROS2_AVAILABLE = True
 except ImportError:
@@ -30,20 +31,27 @@ except ImportError:
 class WebGUIModule:
     """웹 GUI 모듈 클래스"""
     
-    def __init__(self, host='0.0.0.0', port=5000, enable_camera=True, camera_device=None, ros_node=None):
+    def __init__(self, host='0.0.0.0', port=5000, enable_camera=True, camera_device=None, ros_node=None, image_topic=None):
         """
         초기화
 
         Args:
             host: 서버 호스트 (기본: 모든 인터페이스)
             port: 서버 포트 (기본: 5000)
-            enable_camera: 카메라 스트리밍 활성화 여부
-            camera_device: 고정 카메라 경로 (예: /dev/v4l/by-id/...), None이면 기본값 사용
-            ros_node: ROS2 노드 (Foxglove 토픽 발행용)
+            enable_camera: 직접 카메라 캡처 활성화 (True면 cv2.VideoCapture로 단독 점유).
+                           이미 다른 노드가 카메라를 점유하고 있으면 False + image_topic
+                           조합을 써야 한다.
+            camera_device: enable_camera=True일 때 고정 카메라 경로
+            ros_node: ROS2 노드 (Foxglove 토픽 발행용 + image_topic 구독용)
+            image_topic: 외부에서 발행하는 sensor_msgs/CompressedImage 토픽명.
+                         None이 아니면 enable_camera는 무시되고 이 토픽을 subscribe해서
+                         frame을 받는다. (예: '/camera/image/compressed')
         """
         self.host = host
         self.port = port
-        self.enable_camera = enable_camera
+        self.image_topic = image_topic
+        # image_topic을 쓰면 직접 캡처는 무조건 OFF (디바이스 충돌 방지)
+        self.enable_camera = enable_camera and image_topic is None
         self.running = False  # 카메라 루프 제어용
         self.camera_device = camera_device or '/dev/video0'
         self.ros_node = ros_node
@@ -119,8 +127,11 @@ class WebGUIModule:
         self.camera = None
         self.latest_frame = None
         self.frame_lock = threading.Lock()
-        
-        if self.enable_camera:
+        self.image_sub = None
+
+        if self.image_topic is not None and ROS2_AVAILABLE and self.ros_node is not None:
+            self._init_image_subscriber()
+        elif self.enable_camera:
             self._init_camera()
         
         # 라우트 설정
@@ -173,6 +184,33 @@ class WebGUIModule:
         except Exception as e:
             print(f"⚠️ ROS2 퍼블리셔 초기화 실패: {e}")
     
+    def _init_image_subscriber(self):
+        """외부 카메라 노드의 CompressedImage 토픽을 구독한다.
+
+        같은 USB 카메라를 두 모듈이 동시에 cv2.VideoCapture로 열 수 없기 때문에,
+        이미 다른 노드(CameraManager)가 카메라를 점유 중일 때 사용한다.
+        """
+        try:
+            self.image_sub = self.ros_node.create_subscription(
+                CompressedImage, self.image_topic, self._on_image_msg, 10,
+            )
+            print(f"✅ 카메라 이미지 토픽 구독: {self.image_topic}")
+        except Exception as e:
+            print(f"⚠️  이미지 토픽 구독 실패: {e}")
+            self.image_sub = None
+
+    def _on_image_msg(self, msg):
+        """CompressedImage 콜백: JPEG bytes → BGR ndarray → latest_frame."""
+        try:
+            buf = np.frombuffer(msg.data, dtype=np.uint8)
+            frame = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+            if frame is not None:
+                with self.frame_lock:
+                    self.latest_frame = frame
+        except Exception as e:
+            # 디코딩 실패는 흔하니 spam하지 않음
+            pass
+
     def _init_camera(self):
         """USB 카메라 초기화"""
         try:
