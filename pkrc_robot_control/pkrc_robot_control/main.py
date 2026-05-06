@@ -46,8 +46,13 @@ class HEROMainControl(VESCControlNode):
         )
         
         # === Web GUI (Flask + SocketIO, port 5000) ===
+        # 카메라는 CameraManager가 단독 점유하므로 (V4L2 EXCLUSIVE),
+        # WebGUI는 /camera/image/compressed 토픽을 구독해서 frame을 받는다.
         self.gui = WebGUIModule(
-            host='0.0.0.0', port=5000, enable_camera=True, ros_node=self,
+            host='0.0.0.0', port=5000,
+            enable_camera=False,
+            image_topic='/camera/image/compressed',
+            ros_node=self,
         )
         self.gui.start()
 
