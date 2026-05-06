@@ -20,7 +20,7 @@ from .input.pkrc_joy import PKRCJoystickController
 from .control.hovering import HoveringController
 from .control.pid_control import PIDModeController
 from .sensors.sonar_tilt import SonarTiltModule
-from .gui.null_gui import NullGUI
+from .gui.web_gui import WebGUIModule
 from .sensors.camera import CameraManager
 from .control.odom_router import OdometryRouter
 from . import _params
@@ -45,8 +45,11 @@ class HEROMainControl(VESCControlNode):
             10
         )
         
-        # === GUI placeholder (NullGUI: no-op, 미래 통합 Qt GUI로 교체 예정) ===
-        self.gui = NullGUI()
+        # === Web GUI (Flask + SocketIO, port 5000) ===
+        self.gui = WebGUIModule(
+            host='0.0.0.0', port=5000, enable_camera=True, ros_node=self,
+        )
+        self.gui.start()
 
         # === 하드웨어 모듈 초기화 ===
         self.relay_controller = RelayControlModule(
@@ -351,6 +354,12 @@ def main(args=None):
             node.joystick.disarm_system()
         except Exception as e:
             node.get_logger().error(f'disarm_system 실패: {e}')
+
+        # Web GUI 정리
+        try:
+            node.gui.stop()
+        except Exception as e:
+            node.get_logger().error(f'gui stop 실패: {e}')
 
         # 카메라 정리
         try:

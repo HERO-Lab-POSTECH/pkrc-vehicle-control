@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HERO Robot 4WD Dashboard</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1d2e;
+            color: #fff;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* 메인 컨테이너: 3행 구조 */
+        .main-container {
+            display: grid;
+            grid-template-rows: 50px auto 1fr;
+            min-height: 100vh;
+            gap: 15px;
+            padding: 12px;
+            max-width: 1920px;
+            margin: 0 auto;
+        }
+
+        /* 최상단 헤더 */
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 12px;
+            padding: 0 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-title span {
+            color: #3b82f6;
+        }
+
+        .header-status {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .header-status-item {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        /* 카드 영역 */
+        .status-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+        }
+
+        @media (max-width: 1400px) {
+            .status-row {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 900px) {
+            .status-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* 하단 영역 (2D Map + 카메라) */
+        .content-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        /* 카드 공통 스타일 */
+        .card {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .card h2 {
+            font-size: 1em;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 조이스틱 카드 */
+        .joystick-display {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .stick {
+            text-align: center;
+            flex: 1;
+        }
+
+        .stick h3 {
+            font-size: 0.75em;
+            margin-bottom: 6px;
+            opacity: 0.8;
+        }
+
+        .stick-visual {
+            width: 70px;
+            height: 70px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            margin: 0 auto 8px;
+            position: relative;
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        .stick-indicator {
+            width: 14px;
+            height: 14px;
+            background: #10b981;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+            transition: all 0.05s ease;
+        }
+
+        .stick-values {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            font-size: 0.65em;
+        }
+
+        .stick-value {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* 모터 카드 (4개 홀로노믹) */
+        .motor-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            height: calc(100% - 40px);
+        }
+
+        .motor-row {
+            display: flex;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .motor-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 6px;
+            border-radius: 6px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .motor-label {
+            font-size: 0.65em;
+            margin-bottom: 3px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1px;
+        }
+
+        .motor-value {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .motor-bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .motor-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981 0%, #3b82f6 100%);
+            transition: width 0.1s ease;
+            border-radius: 5px;
+        }
+
+        /* 릴레이 카드 */
+        .relay-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .relay-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .relay-label {
+            font-size: 0.7em;
+            margin-bottom: 6px;
+            opacity: 0.9;
+        }
+
+        .relay-indicator {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            margin: 5px auto;
+            transition: all 0.3s ease;
+        }
+
+        .relay-on {
+            background: #10b981;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.8);
+        }
+
+        .relay-off {
+            background: #374151;
+        }
+
+        .relay-status {
+            font-size: 0.65em;
+            font-weight: bold;
+        }
+
+        /* 배터리 카드 */
+        .battery-display {
+            text-align: center;
+            padding: 5px;
+        }
+
+        .battery-percentage {
+            font-size: 2.8em;
+            font-weight: bold;
+            margin-bottom: 5px;
+            line-height: 1;
+        }
+
+        .battery-voltage {
+            font-size: 1em;
+            opacity: 0.8;
+            margin-bottom: 8px;
+        }
+
+        .battery-bar {
+            width: 100%;
+            height: 18px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 9px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .battery-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981 0%, #3b82f6 100%);
+            width: 0%;
+            transition: width 0.5s ease, background 0.5s ease;
+        }
+
+        .battery-status {
+            font-size: 0.85em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+
+        /* 소나 카드 */
+        .sonar-display {
+            text-align: center;
+            position: relative;
+        }
+
+        .sonar-angles {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 8px;
+        }
+
+        .sonar-angle-item {
+            text-align: center;
+        }
+
+        .sonar-angle-label {
+            font-size: 0.7em;
+            opacity: 0.7;
+        }
+
+        .sonar-angle-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+
+        .sonar-current {
+            color: #10b981;
+        }
+
+        .sonar-goal {
+            color: #f59e0b;
+        }
+
+        .sonar-visual {
+            position: relative;
+            height: 140px;
+            margin-top: 5px;
+        }
+
+        .sonar-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 2D Map 영역 */
+        .map-area {
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .map-placeholder {
+            text-align: center;
+            opacity: 0.5;
+        }
+
+        .map-placeholder h2 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        /* 시스템 상태 */
+        .status-armed {
+            background: #10b981 !important;
+        }
+
+        .status-disarmed {
+            background: #ef4444 !important;
+        }
+
+        /* 카메라 영역 */
+        .camera-area {
+            background: #0a0a0a;
+            border-radius: 12px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            transition: border-color 0.3s ease;
+        }
+
+        .camera-area.recording {
+            border-color: #ef4444;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+        }
+
+        .camera-area.flash {
+            border-color: #3b82f6;
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.8);
+        }
+
+        .camera-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #000;
+        }
+
+        /* 연결 상태 배지 (헤더 내부용) */
+        .connection-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        .connected {
+            background: #10b981;
+        }
+
+        .disconnected {
+            background: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <!-- 메인 컨테이너 -->
+    <div class="main-container">
+        <!-- 최상단 헤더 -->
+        <div class="header-row">
+            <div class="header-title">
+                🚤 <span>HERO Robot</span> 4WD 홀로노믹
+            </div>
+            <div class="header-status">
+                <div class="connection-badge disconnected" id="connectionStatus">
+                    🔴 연결 끊김
+                </div>
+                <div class="header-status-item status-disarmed" id="armedStatus">
+                    🛑 시동 OFF
+                </div>
+                <div class="header-status-item" id="controlModeStatus" style="background: #6366f1;">
+                    🎯 NORMAL
+                </div>
+                <div class="header-status-item" style="background: #3b82f6;">
+                    🎚️ 감도: <span id="sensitivity">50</span>%
+                </div>
+            </div>
+        </div>
+
+        <!-- 카드 영역 -->
+        <div class="status-row">
+            <!-- 조이스틱 카드 -->
+            <div class="card">
+                <h2>🎮 조이스틱</h2>
+                <div class="joystick-display">
+                    <div class="stick">
+                        <h3>왼쪽</h3>
+                        <div class="stick-visual">
+                            <div class="stick-indicator" id="leftStick"></div>
+                        </div>
+                        <div class="stick-values">
+                            <span class="stick-value">X: <span id="leftX">0.00</span></span>
+                            <span class="stick-value">Y: <span id="leftY">0.00</span></span>
+                        </div>
+                    </div>
+                    <div class="stick">
+                        <h3>오른쪽</h3>
+                        <div class="stick-visual">
+                            <div class="stick-indicator" id="rightStick"></div>
+                        </div>
+                        <div class="stick-values">
+                            <span class="stick-value">X: <span id="rightX">0.00</span></span>
+                            <span class="stick-value">Y: <span id="rightY">0.00</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 모터 카드 (4개 홀로노믹) -->
+            <div class="card">
+                <h2>⚙️ 모터 (4WD)</h2>
+                <div class="motor-grid">
+                    <div class="motor-item">
+                        <div class="motor-label">
+                            <span>앞 (VESC 4)</span>
+                            <span class="motor-value" id="motor4">0.00 A</span>
+                        </div>
+                        <div class="motor-bar">
+                            <div class="motor-bar-fill" id="motor4Bar"></div>
+                        </div>
+                    </div>
+                    <div class="motor-row">
+                        <div class="motor-item">
+                            <div class="motor-label">
+                                <span>좌 (VESC 3)</span>
+                                <span class="motor-value" id="motor3">0.00 A</span>
+                            </div>
+                            <div class="motor-bar">
+                                <div class="motor-bar-fill" id="motor3Bar"></div>
+                            </div>
+                        </div>
+                        <div class="motor-item">
+                            <div class="motor-label">
+                                <span>우 (VESC 1)</span>
+                                <span class="motor-value" id="motor1">0.00 A</span>
+                            </div>
+                            <div class="motor-bar">
+                                <div class="motor-bar-fill" id="motor1Bar"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="motor-item">
+                        <div class="motor-label">
+                            <span>뒤 (VESC 2)</span>
+                            <span class="motor-value" id="motor2">0.00 A</span>
+                        </div>
+                        <div class="motor-bar">
+                            <div class="motor-bar-fill" id="motor2Bar"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 릴레이 카드 -->
+            <div class="card">
+                <h2>🔌 릴레이</h2>
+                <div class="relay-grid">
+                    <div class="relay-item">
+                        <div class="relay-label">Relay 1</div>
+                        <div class="relay-indicator relay-off" id="relay1"></div>
+                        <div class="relay-status" id="relay1Text">OFF</div>
+                    </div>
+                    <div class="relay-item">
+                        <div class="relay-label">Oculus</div>
+                        <div class="relay-indicator relay-off" id="relay2"></div>
+                        <div class="relay-status" id="relay2Text">OFF</div>
+                    </div>
+                    <div class="relay-item">
+                        <div class="relay-label">MID360</div>
+                        <div class="relay-indicator relay-off" id="relay3"></div>
+                        <div class="relay-status" id="relay3Text">OFF</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 소나 카드 -->
+            <div class="card">
+                <h2>📡 소나 틸트</h2>
+                <div class="sonar-display">
+                    <div class="sonar-angles">
+                        <div class="sonar-angle-item">
+                            <div class="sonar-angle-label">목표 각도</div>
+                            <div class="sonar-angle-value sonar-current" id="sonarGoal">0°</div>
+                        </div>
+                        <div class="sonar-angle-item">
+                            <div class="sonar-angle-label">Oculus Vertical Aperture</div>
+                            <div class="sonar-angle-value sonar-goal">20°</div>
+                        </div>
+                    </div>
+                    <div class="sonar-visual">
+                        <canvas id="sonarCanvas" class="sonar-canvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 배터리 카드 -->
+            <div class="card">
+                <h2>🔋 배터리</h2>
+                <div class="battery-display">
+                    <div class="battery-percentage" id="batteryPercentage">--</div>
+                    <div class="battery-voltage" id="batteryVoltage">-- V</div>
+                    <div class="battery-bar">
+                        <div class="battery-bar-fill" id="batteryBar"></div>
+                    </div>
+                    <div class="battery-status" id="batteryStatus">알 수 없음</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 하단: 2D Map + 카메라 -->
+        <div class="content-row">
+            <!-- 2D Map 영역 -->
+            <div class="map-area">
+                <div class="map-placeholder">
+                    <h2>🗺️ 2D Map</h2>
+                    <p>RViz 2D Map 영역</p>
+                    <p style="font-size: 0.9em; opacity: 0.7;">(추후 연동 예정)</p>
+                </div>
+            </div>
+
+            <!-- 카메라 영역 -->
+            <div class="camera-area" id="cameraArea">
+                <img src="/video_feed" class="camera-feed" alt="카메라 피드">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MAX_CURRENT = 8.0; // 쓰러스터 최대 전류 (A)
+
+        // Socket.IO 연결
+        const socket = io({
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 10,
+            timeout: 20000
+        });
+
+        // 연결 상태
+        socket.on('connect', () => {
+            console.log('✅ 서버 연결됨');
+            document.getElementById('connectionStatus').textContent = '🟢 연결됨';
+            document.getElementById('connectionStatus').className = 'connection-badge connected';
+        });
+
+        socket.on('disconnect', () => {
+            console.log('❌ 서버 연결 끊김');
+            document.getElementById('connectionStatus').textContent = '🔴 연결 끊김';
+            document.getElementById('connectionStatus').className = 'connection-badge disconnected';
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('연결 오류:', error);
+        });
+
+        // 상태 업데이트
+        socket.on('state_update', (data) => {
+            updateJoystick(data.joystick);
+            updateSystem(data.system);
+            updateBattery(data.battery);
+            updateRelays(data.relays);
+            updateMotors(data.motor_commands);
+            updateRecording(data.recording);
+            updateSonarTilt(data.sonar_tilt);
+        });
+
+        // 조이스틱 인디케이터 이동 범위 (중심에서 %)
+        const STICK_RANGE = 38;
+
+        function updateJoystick(joystick) {
+            // 왼쪽 스틱
+            const leftX = joystick.left_x || 0;
+            const leftY = joystick.left_y || 0;
+            document.getElementById('leftX').textContent = leftX.toFixed(2);
+            document.getElementById('leftY').textContent = leftY.toFixed(2);
+
+            const leftStick = document.getElementById('leftStick');
+            leftStick.style.left = `${50 + leftX * STICK_RANGE}%`;
+            leftStick.style.top = `${50 - leftY * STICK_RANGE}%`;
+
+            // 오른쪽 스틱
+            const rightX = joystick.right_x || 0;
+            const rightY = joystick.right_y || 0;
+            document.getElementById('rightX').textContent = rightX.toFixed(2);
+            document.getElementById('rightY').textContent = rightY.toFixed(2);
+
+            const rightStick = document.getElementById('rightStick');
+            rightStick.style.left = `${50 + rightX * STICK_RANGE}%`;
+            rightStick.style.top = `${50 - rightY * STICK_RANGE}%`;
+        }
+
+        function updateSystem(system) {
+            // 시동 상태
+            const armedStatus = document.getElementById('armedStatus');
+            if (system.is_armed) {
+                armedStatus.textContent = '✅ 시동 ON';
+                armedStatus.className = 'header-status-item status-armed';
+            } else {
+                armedStatus.textContent = '🛑 시동 OFF';
+                armedStatus.className = 'header-status-item status-disarmed';
+            }
+
+            // 제어 모드
+            const modeStatus = document.getElementById('controlModeStatus');
+            if (system.control_mode === 'HOVERING') {
+                modeStatus.textContent = '🛰️ HOVERING';
+                modeStatus.style.background = '#f59e0b';
+            } else if (system.control_mode === 'PID') {
+                modeStatus.textContent = '🎮 PID';
+                modeStatus.style.background = '#10b981';
+            } else {
+                modeStatus.textContent = '🎯 NORMAL';
+                modeStatus.style.background = '#6366f1';
+            }
+
+            // 감도
+            document.getElementById('sensitivity').textContent = Math.round(system.sensitivity * 100);
+        }
+
+        function updateBattery(battery) {
+            const voltage = battery.voltage || 0;
+            const percentage = battery.percentage || 0;
+            const status = battery.status || 'unknown';
+
+            document.getElementById('batteryVoltage').textContent = voltage.toFixed(2) + ' V';
+            document.getElementById('batteryPercentage').textContent = Math.round(percentage) + '%';
+
+            // 배터리 바 업데이트
+            const batteryBar = document.getElementById('batteryBar');
+            batteryBar.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+
+            // 상태에 따른 색상 변경
+            const batteryStatusElement = document.getElementById('batteryStatus');
+
+            if (status === 'critical') {
+                batteryBar.style.background = 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)';
+                batteryStatusElement.textContent = '🚨 위험';
+                batteryStatusElement.style.background = '#ef4444';
+            } else if (status === 'low') {
+                batteryBar.style.background = 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)';
+                batteryStatusElement.textContent = '⚠️ 경고';
+                batteryStatusElement.style.background = '#f59e0b';
+            } else if (status === 'good') {
+                batteryBar.style.background = 'linear-gradient(90deg, #10b981 0%, #3b82f6 100%)';
+                batteryStatusElement.textContent = '✅ 정상';
+                batteryStatusElement.style.background = '#10b981';
+            } else {
+                batteryBar.style.background = '#6b7280';
+                batteryStatusElement.textContent = '❓ 알 수 없음';
+                batteryStatusElement.style.background = '#374151';
+            }
+        }
+
+        function updateRelays(relays) {
+            updateRelay('relay1', relays.relay_1);
+            updateRelay('relay2', relays.relay_2);
+            updateRelay('relay3', relays.relay_3);
+        }
+
+        function updateRelay(id, state) {
+            const indicator = document.getElementById(id);
+            const text = document.getElementById(id + 'Text');
+
+            if (state) {
+                indicator.className = 'relay-indicator relay-on';
+                text.textContent = 'ON';
+            } else {
+                indicator.className = 'relay-indicator relay-off';
+                text.textContent = 'OFF';
+            }
+        }
+
+        function updateMotors(motors) {
+            if (!motors) return;
+            updateMotor('motor1', motors.vesc_1 || 0);
+            updateMotor('motor2', motors.vesc_2 || 0);
+            updateMotor('motor3', motors.vesc_3 || 0);
+            updateMotor('motor4', motors.vesc_4 || 0);
+        }
+
+        function updateMotor(id, value) {
+            const valueElement = document.getElementById(id);
+            const barElement = document.getElementById(id + 'Bar');
+
+            valueElement.textContent = `${value.toFixed(2)} A`;
+
+            // 바 너비 계산 (절대값 기준, 최대 100%)
+            const percentage = Math.min((Math.abs(value) / MAX_CURRENT) * 100, 100);
+            barElement.style.width = `${percentage}%`;
+
+            // 양수/음수에 따라 색상 변경
+            if (value > 0) {
+                barElement.style.background = 'linear-gradient(90deg, #10b981 0%, #3b82f6 100%)';
+            } else if (value < 0) {
+                barElement.style.background = 'linear-gradient(90deg, #ef4444 0%, #f59e0b 100%)';
+            } else {
+                barElement.style.background = '#374151';
+            }
+        }
+
+        let lastFlashHandled = false;
+
+        function updateRecording(recording) {
+            const cameraArea = document.getElementById('cameraArea');
+            if (!cameraArea || !recording) return;
+
+            if (recording.status) {
+                // 녹화 중 - 빨간 테두리
+                cameraArea.classList.add('recording');
+                cameraArea.classList.remove('flash');
+                lastFlashHandled = false;
+            } else if (recording.flash && !lastFlashHandled) {
+                // 녹화 완료 - 파란색 플래시 (한 번만)
+                lastFlashHandled = true;
+                cameraArea.classList.remove('recording');
+                cameraArea.classList.add('flash');
+
+                // 0.5초 후 플래시 제거
+                setTimeout(() => {
+                    cameraArea.classList.remove('flash');
+                }, 500);
+            } else if (!recording.flash) {
+                // 대기 상태
+                cameraArea.classList.remove('recording');
+                cameraArea.classList.remove('flash');
+                lastFlashHandled = false;
+            }
+        }
+
+        // 소나 틸트 업데이트
+        function updateSonarTilt(sonarTilt) {
+            if (!sonarTilt) return;
+
+            const goal = sonarTilt.goal_angle || 0;
+            document.getElementById('sonarGoal').textContent = goal.toFixed(1) + '°';
+            drawSonarVisual(goal);
+        }
+
+        // 소나 시각화 설정
+        const SONAR_CONFIG = {
+            waterLineY: 25,      // 수면 Y 위치
+            boatXRatio: 0.35,    // 캔버스 너비 대비 보트 X 위치 비율
+            beamLength: 60,      // 빔 길이
+            beamSpreadDeg: 10    // 빔 폭 (도)
+        };
+
+        // 소나 시각화 그리기
+        function drawSonarVisual(angle) {
+            const canvas = document.getElementById('sonarCanvas');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // 배경 클리어
+            ctx.clearRect(0, 0, w, h);
+
+            const waterY = SONAR_CONFIG.waterLineY;
+
+            // 수면 (상단 파란색 영역)
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+            ctx.fillRect(0, 0, w, waterY);
+
+            // 수면 선
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, waterY);
+            ctx.lineTo(w, waterY);
+            ctx.stroke();
+
+            // 수면 라벨
+            ctx.fillStyle = '#3b82f6';
+            ctx.font = '10px Arial';
+            ctx.fillText('Water', 5, 18);
+
+            // 보트 위치
+            const boatX = w * SONAR_CONFIG.boatXRatio;
+            const boatY = waterY;
+
+            // 보트 그리기 (측면도)
+            ctx.fillStyle = '#6b7280';
+            ctx.beginPath();
+            ctx.moveTo(boatX - 30, boatY);
+            ctx.lineTo(boatX + 30, boatY);
+            ctx.lineTo(boatX + 25, boatY + 12);
+            ctx.lineTo(boatX - 25, boatY + 12);
+            ctx.closePath();
+            ctx.fill();
+
+            // 보트 캐빈
+            ctx.fillStyle = '#4b5563';
+            ctx.fillRect(boatX - 10, boatY - 10, 20, 10);
+
+            // 소나 마운트 위치
+            const sonarX = boatX;
+            const sonarY = boatY + 15;
+
+            // 소나 마운트
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.arc(sonarX, sonarY, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 각도 눈금 (0, 30, 45, 60, 90)
+            const angles = [0, 30, 45, 60, 90];
+            const guideLineLen = SONAR_CONFIG.beamLength + 15;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.font = '9px Arial';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+
+            angles.forEach(ang => {
+                const rad = (ang * Math.PI) / 180;
+                const endX = sonarX + Math.cos(rad) * guideLineLen;
+                const endY = sonarY + Math.sin(rad) * guideLineLen;
+
+                ctx.beginPath();
+                ctx.setLineDash([3, 3]);
+                ctx.moveTo(sonarX, sonarY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // 각도 라벨
+                const labelX = sonarX + Math.cos(rad) * (guideLineLen + 10);
+                const labelY = sonarY + Math.sin(rad) * (guideLineLen + 10);
+                ctx.fillText(ang + '°', labelX - 8, labelY + 3);
+            });
+
+            // 소나 빔 (초록색, 부채꼴)
+            const angleRad = (angle * Math.PI) / 180;
+            const beamSpread = SONAR_CONFIG.beamSpreadDeg * Math.PI / 180;
+            const beamLen = SONAR_CONFIG.beamLength;
+
+            // 빔 부채꼴
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
+            ctx.beginPath();
+            ctx.moveTo(sonarX, sonarY);
+            ctx.arc(sonarX, sonarY, beamLen, angleRad - beamSpread, angleRad + beamSpread);
+            ctx.closePath();
+            ctx.fill();
+
+            // 빔 테두리
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(sonarX, sonarY);
+            ctx.arc(sonarX, sonarY, beamLen, angleRad - beamSpread, angleRad + beamSpread);
+            ctx.closePath();
+            ctx.stroke();
+
+            // 빔 중심선
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(sonarX, sonarY);
+            ctx.lineTo(sonarX + Math.cos(angleRad) * beamLen, sonarY + Math.sin(angleRad) * beamLen);
+            ctx.stroke();
+
+            // 소나 아이콘 (다시 위에 그리기)
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.arc(sonarX, sonarY, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        // 초기 소나 그리기
+        window.addEventListener('load', () => {
+            drawSonarVisual(0);
+        });
+    </script>
+</body>
+</html>
