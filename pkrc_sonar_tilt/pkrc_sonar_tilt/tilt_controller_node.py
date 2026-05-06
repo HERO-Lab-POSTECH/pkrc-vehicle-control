@@ -55,6 +55,11 @@ class XW540Controller:
     SANITY_MIN = -100.0
     SANITY_MAX = 200.0
 
+    # Multi-turn guard: raw motor angle outside ±360° means the motor has
+    # accumulated a full turn. Unwinding this via Mode 4's monotonic path
+    # would rip the mount apart, so reject regardless of sensor-angle.
+    RAW_MOTOR_DEG_LIMIT = 360.0
+
     def __init__(self, device_name='/dev/ttyUSB0', baudrate=57600, motor_id=1):
         self.device_name = device_name
         self.baudrate = baudrate
@@ -92,8 +97,12 @@ class XW540Controller:
             self.port_handler.closePort()
         self.connected = False
 
-    def setup_motor(self, profile_velocity=200, profile_acceleration=100):
-        """모터 초기 설정 (Drive Mode, Profile 등)"""
+    def configure_motor(self, profile_velocity=200, profile_acceleration=100):
+        """모터 설정만 적용 (Drive Mode / Operating Mode / Profile). 토크는 켜지 않음.
+
+        토크 ON은 별도 호출(enable_torque)로 분리되어 있다 — 부팅 시점의 위치 가드가
+        통과한 뒤에만 토크를 켜기 위함.
+        """
         with self.lock:
             # Torque Disable (설정 변경을 위해)
             self.packet_handler.write1ByteTxRx(
@@ -127,13 +136,11 @@ class XW540Controller:
             )
             time.sleep(0.1)
 
-            # Torque Enable
-            self.packet_handler.write1ByteTxRx(
-                self.port_handler, self.motor_id, self.ADDR_TORQUE_ENABLE, 1
-            )
-            time.sleep(0.1)
-
         return True
+
+    def enable_torque(self) -> bool:
+        """토크 ON. configure_motor와 분리되어 있어, 부팅 시 위치 가드 통과 후에만 호출됨."""
+        return self.set_torque(True)
 
     def _sensor_angle_to_motor_angle(self, sensor_angle: float) -> float:
         """센서 각도를 모터 각도로 변환 (기어비 2:1 적용)"""
@@ -195,16 +202,52 @@ class XW540Controller:
             position -= 0x100000000
         return position
 
-    def is_current_position_safe(self) -> bool:
-        """OPERATING-tier guard (sensor-angle based).
+    def check_position_safety(self) -> tuple[bool, str, dict]:
+        """3-tier position safety check (raw multi-turn / SANITY / OPERATING).
 
-        Returns True iff the present sensor angle falls within the
-        OPERATING window (OPERATING_MIN ~ OPERATING_MAX). This does
-        NOT check the SANITY tier — that check lives inside
-        set_goal_position_degree() and surfaces via its return value.
+        Mode 4 (Extended Position) gives a monotonic, multi-turn-aware raw
+        counter. We must guard three failure modes:
+          - Raw motor angle accumulated past ±360° (multi-turn slip): unwinding
+            via the monotonic command path would tear the mount.
+          - Sensor angle outside SANITY window: catastrophic miswiring.
+          - Sensor angle outside OPERATING window: recoverable by hand.
+
+        Returns:
+            (safe, error_message, diagnostics_dict). diagnostics keys:
+            raw, motor_deg, sensor_deg.
         """
-        sensor = self.get_present_position_degree()
-        return self.OPERATING_MIN <= sensor <= self.OPERATING_MAX
+        raw_pos = self._get_raw_motor_position()
+        motor_deg = raw_pos * 360.0 / 4096.0
+        sensor_deg = motor_deg / self.GEAR_RATIO
+        diag = {"raw": raw_pos, "motor_deg": motor_deg, "sensor_deg": sensor_deg}
+
+        if abs(motor_deg) > self.RAW_MOTOR_DEG_LIMIT:
+            return False, (
+                f"Multi-turn slip: motor={motor_deg:.1f}° (|deg|>360°), "
+                f"sensor={sensor_deg:.1f}°, raw={raw_pos}. Unwinding would "
+                f"damage the mount. Power-cycle the motor to reset position."
+            ), diag
+
+        if not (self.SANITY_MIN <= sensor_deg <= self.SANITY_MAX):
+            return False, (
+                f"Severe out-of-range: sensor={sensor_deg:.1f}° "
+                f"(motor={motor_deg:.1f}°, raw={raw_pos}). "
+                f"Power-cycle the motor and verify mounting before retrying."
+            ), diag
+
+        if not (self.OPERATING_MIN <= sensor_deg <= self.OPERATING_MAX):
+            return False, (
+                f"Position out of operating range: sensor={sensor_deg:.1f}° "
+                f"(motor={motor_deg:.1f}°, raw={raw_pos}). "
+                f"Allowed: 0~92°. Manually rotate within range, then retry."
+            ), diag
+
+        return True, "", diag
+
+    def is_current_position_safe(self) -> bool:
+        """Convenience wrapper around check_position_safety()."""
+        safe, _, _ = self.check_position_safety()
+        return safe
 
     def set_goal_position_degree(self, sensor_angle: float) -> tuple[bool, float, str]:
         """목표 센서 각도 설정 (도 단위, 기어비 적용)
@@ -215,29 +258,12 @@ class XW540Controller:
         Returns:
             tuple: (성공 여부, 실제 적용된 센서 각도, 에러 메시지)
         """
-        # 각도 제한 적용 (0~92도 범위로 클램핑)
         clamped_angle = self.clamp_sensor_angle(sensor_angle)
 
         with self.lock:
-            raw_pos = self._get_raw_motor_position()
-            present_motor_deg = raw_pos * 360.0 / 4096.0
-            present_sensor = present_motor_deg / self.GEAR_RATIO
-
-            # Tier 1: catastrophic — multi-turn slip or miswiring
-            if not (self.SANITY_MIN <= present_sensor <= self.SANITY_MAX):
-                return False, clamped_angle, (
-                    f"Severe out-of-range: sensor={present_sensor:.1f}° "
-                    f"(motor={present_motor_deg:.1f}°, raw={raw_pos}). "
-                    f"Power-cycle the motor and verify mounting before retrying."
-                )
-
-            # Tier 2: outside operating window — recoverable by hand
-            if not (self.OPERATING_MIN <= present_sensor <= self.OPERATING_MAX):
-                return False, clamped_angle, (
-                    f"Position out of operating range: sensor={present_sensor:.1f}° "
-                    f"(motor={present_motor_deg:.1f}°, raw={raw_pos}). "
-                    f"Allowed: 0~92°. Manually rotate within range, then retry."
-                )
+            safe, err, _ = self.check_position_safety()
+            if not safe:
+                return False, clamped_angle, err
 
             motor_angle = self._sensor_angle_to_motor_angle(clamped_angle)
             position = self._angle_to_position(motor_angle)
@@ -322,24 +348,25 @@ class SonarTiltControllerNode(Node):
         # 목표 각도 저장
         self.goal_angle = 0.0
 
+        # Safe-mode gate. False = startup position guard failed → reject all
+        # set_angle commands until operator power-cycles and restarts.
+        self.safe_mode = False
+
         # Connect to motor
         self.get_logger().info(f'Connecting to Dynamixel on {device}...')
         if self.controller.connect():
             self.get_logger().info('Connected to Dynamixel XW540!')
 
-            # 모터 초기 설정 (Drive Mode Reverse, Operating Mode 4, Profile)
-            self.get_logger().info('Setting up motor (Reverse Mode, Extended Position, Gear Ratio 2:1)...')
-            self.controller.setup_motor(profile_velocity, profile_acceleration)
-            self.get_logger().info('Motor setup complete!')
+            # Stage 1: configure motor (Drive Mode, Operating Mode 4, Profile).
+            # Torque stays OFF until startup position guard passes.
+            self.get_logger().info('Configuring motor (Reverse Mode, Extended Position, Gear Ratio 2:1)...')
+            self.controller.configure_motor(profile_velocity, profile_acceleration)
 
-            # 현재 위치 읽어서 목표 각도 초기화 + 진단 로그
-            raw = self.controller._get_raw_motor_position()
-            motor_deg = raw * 360.0 / 4096.0
-            sensor_deg = motor_deg / self.controller.GEAR_RATIO
-            self.goal_angle = sensor_deg
+            # Stage 2: startup position guard. Reject torque-on if catastrophic.
+            safe, err, diag = self.controller.check_position_safety()
             self.get_logger().info(
-                f'Initial position: sensor={sensor_deg:.2f}° '
-                f'(motor={motor_deg:.2f}°, raw={raw})'
+                f'Initial position: sensor={diag["sensor_deg"]:.2f}° '
+                f'(motor={diag["motor_deg"]:.2f}°, raw={diag["raw"]})'
             )
             self.get_logger().info(
                 f'Operating range: {self.controller.SENSOR_ANGLE_MIN:.0f}~'
@@ -347,16 +374,32 @@ class SonarTiltControllerNode(Node):
                 f'(guard: {self.controller.OPERATING_MIN:.0f}~'
                 f'{self.controller.OPERATING_MAX:.0f}°)'
             )
-            self.get_logger().info(f'Auto-home: {"enabled" if self.auto_home else "disabled"}')
 
-            # Optional auto-home (default off)
-            if self.auto_home:
-                self.get_logger().info('Auto-home: moving to 45°...')
-                success, _, err = self.controller.set_goal_position_degree(45.0)
-                if not success:
-                    self.get_logger().warn(f'Auto-home blocked: {err}')
-                else:
-                    self.goal_angle = 45.0
+            if not safe:
+                # Fail-safe: torque stays OFF, all set_angle commands rejected.
+                self.get_logger().error(
+                    f'STARTUP GUARD FAILED — torque kept OFF. {err}'
+                )
+                self.get_logger().error(
+                    'Node is in safe-mode. set_angle commands will be rejected. '
+                    'Power-cycle the motor (and verify mounting) before restarting this node.'
+                )
+                self.goal_angle = diag["sensor_deg"]
+            else:
+                # Stage 3: enable torque, set goal, optional auto-home.
+                self.controller.enable_torque()
+                self.safe_mode = True
+                self.goal_angle = diag["sensor_deg"]
+                self.get_logger().info('Torque enabled. Node is in safe-mode.')
+                self.get_logger().info(f'Auto-home: {"enabled" if self.auto_home else "disabled"}')
+
+                if self.auto_home:
+                    self.get_logger().info('Auto-home: moving to 45°...')
+                    success, _, ah_err = self.controller.set_goal_position_degree(45.0)
+                    if not success:
+                        self.get_logger().warn(f'Auto-home blocked: {ah_err}')
+                    else:
+                        self.goal_angle = 45.0
         else:
             self.get_logger().error('Failed to connect to Dynamixel!')
 
@@ -415,6 +458,14 @@ class SonarTiltControllerNode(Node):
             self.get_logger().warn('Motor not connected!')
             return
 
+        # Safe-mode gate: startup guard failed → reject without auto-enabling torque.
+        if not self.safe_mode:
+            self.get_logger().error(
+                f'set_angle rejected: node is in safe-mode (startup guard failed). '
+                f'Power-cycle the motor and restart the node.'
+            )
+            return
+
         requested_angle = msg.data
 
         # 범위 체크 및 경고
@@ -425,7 +476,7 @@ class SonarTiltControllerNode(Node):
                 f'Clamping to valid range.'
             )
 
-        # 토크 자동 활성화
+        # 토크 자동 활성화 (safe-mode 통과 후에만)
         if not self.controller.get_torque_status():
             self.controller.set_torque(True)
             self.get_logger().info('Torque enabled automatically')
