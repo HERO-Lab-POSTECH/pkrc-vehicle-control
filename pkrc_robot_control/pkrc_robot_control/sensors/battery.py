@@ -12,6 +12,9 @@ import threading
 import time
 from typing import Optional, Dict, Callable
 
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import BatteryState
+
 from .._log import make_logger
 
 
@@ -53,6 +56,8 @@ class BatteryMonitor:
         # 상태
         self.bus: Optional[can.interface.Bus] = None
         self._timer = None  # rclpy.timer.Timer; assigned by start_monitoring
+        self._node = None  # set by start_monitoring; needed for stamp/publisher
+        self.pub_battery = None  # /pkrc/battery/state; created in start_monitoring
         
         # 콜백 함수
         self.voltage_callback: Optional[Callable] = None
@@ -168,6 +173,11 @@ class BatteryMonitor:
         if not self.bus:
             self._log('error', '❌ CAN 버스가 초기화되지 않았습니다')
             return
+        self._node = node
+        # /pkrc/battery/state publisher (BEST_EFFORT, depth=10) — 외부 Qt 모니터링용.
+        # publish는 매 _check_voltage_warnings마다(=update_interval 주기). heartbeat 별도 불필요.
+        qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        self.pub_battery = node.create_publisher(BatteryState, '/pkrc/battery/state', qos)
         self._timer = node.create_timer(update_interval, self._poll_voltage)
         self._log('info', f'✅ 배터리 전압 모니터링 시작 ({update_interval}s 주기)')
     
@@ -214,6 +224,9 @@ class BatteryMonitor:
         else:
             status = 'good'
         
+        # ROS 토픽 publish (매 측정마다, GUI throttle과 무관)
+        self._publish_battery_state(avg_voltage, percentage, status)
+
         # GUI 자동 업데이트 (1분에 한 번만)
         current_time = time.time()
         if self.gui and avg_voltage and percentage:
@@ -236,6 +249,27 @@ class BatteryMonitor:
                 except:
                     pass  # GUI 업데이트 실패해도 모니터링은 계속
     
+    def _publish_battery_state(self, avg_voltage, percentage, status):
+        """Publish /pkrc/battery/state for external monitoring.
+
+        Called from _check_voltage_warnings on every measurement. Robust to
+        None inputs (publishes NaN where data missing) so subscribers see
+        liveness even before first valid reading.
+        """
+        if getattr(self, 'pub_battery', None) is None:
+            return
+        msg = BatteryState()
+        msg.header.stamp = self._node.get_clock().now().to_msg()
+        msg.voltage = float(avg_voltage) if avg_voltage is not None else float('nan')
+        # BatteryState.percentage is 0~1 fraction by ROS convention.
+        msg.percentage = float(percentage) / 100.0 if percentage is not None else float('nan')
+        msg.power_supply_status = BatteryState.POWER_SUPPLY_STATUS_DISCHARGING
+        msg.power_supply_health = (
+            BatteryState.POWER_SUPPLY_HEALTH_DEAD if status == 'critical'
+            else BatteryState.POWER_SUPPLY_HEALTH_GOOD
+        )
+        self.pub_battery.publish(msg)
+
     def _print_voltage_status(self):
         """현재 전압 상태 출력"""
         with self.lock:

@@ -11,6 +11,9 @@ import subprocess
 import sys
 import time
 
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from std_msgs.msg import UInt8
+
 from .._log import make_logger
 
 try:
@@ -25,7 +28,7 @@ except ImportError:
 class RelayControlModule:
     """릴레이 제어 모듈 클래스"""
     
-    def __init__(self, auto_init=True, gui=None, *, logger=None):
+    def __init__(self, auto_init=True, gui=None, *, logger=None, node=None):
         """
         릴레이 제어 모듈 초기화
 
@@ -33,9 +36,12 @@ class RelayControlModule:
             auto_init (bool): 자동 초기화 여부 (기본값: True)
             gui: GUI 인터페이스 (NullGUI 또는 미래 통합 Qt GUI)
             logger: rclpy logger (None 이면 print fallback). Keyword-only.
+            node: rclpy Node 참조. None이면 /pkrc/relays/state publish 비활성
+                  (단위 테스트 호환). main.py에서는 node=self 전달.
         """
         self._log = make_logger(logger)
         self.gui = gui
+        self._node = node
         self._cleanup_done = False  # cleanup 중복 호출 방지
         
         # CH1: GPIO7번 (Jetson.GPIO 방식)
@@ -67,12 +73,21 @@ class RelayControlModule:
             }
         }
         
+        # /pkrc/relays/state publisher (BEST_EFFORT) — node 주입 시에만.
+        # 변경 즉시 publish + 1Hz heartbeat (BEST_EFFORT drop 보완).
+        self.pub_relays = None
+        self._heartbeat_timer = None
+        if node is not None:
+            qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+            self.pub_relays = node.create_publisher(UInt8, '/pkrc/relays/state', qos)
+            self._heartbeat_timer = node.create_timer(1.0, self._publish_relays_state)
+
         # 시그널 핸들러는 등록하지 않음: rclpy의 SIGINT 핸들러 + main.py finally가 cleanup 담당
         if auto_init:
             self.initialize()
     
     def _update_gui(self):
-        """GUI에 릴레이 상태 업데이트 (내부 상태 사용)"""
+        """GUI에 릴레이 상태 업데이트 + ROS 토픽 publish (내부 상태 사용)"""
         try:
             # 내부 상태 변수 사용 (gpioget 호출하면 CH3 상태가 깨짐)
             self.gui.update_relays(
@@ -82,6 +97,19 @@ class RelayControlModule:
             )
         except Exception as e:
             self._log('warn', f'GUI 업데이트 실패: {e}')
+        # 변경 즉시 ROS publish (heartbeat 1Hz와 별개로 latency 줄임)
+        self._publish_relays_state()
+
+    def _publish_relays_state(self):
+        """Publish /pkrc/relays/state as UInt8 bitmask (bit0=CH1, bit1=CH2, bit2=CH3)."""
+        if self.pub_relays is None:
+            return
+        bitmask = (
+            (int(bool(self.relay_states['CH1'])) << 0)
+            | (int(bool(self.relay_states['CH2'])) << 1)
+            | (int(bool(self.relay_states['CH3'])) << 2)
+        )
+        self.pub_relays.publish(UInt8(data=bitmask))
     
     def initialize(self):
         """모든 릴레이 채널 초기화"""

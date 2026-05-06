@@ -10,13 +10,16 @@ import spidev
 import time
 import threading
 
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
+
 from .._log import make_logger
 
 
 class BlueRoboticsLED:
     """Blue Robotics RGB LED 제어 클래스 (SPI0 전용)"""
     
-    def __init__(self, spi_bus=0, spi_device=0, gui=None, *, logger=None):
+    def __init__(self, spi_bus=0, spi_device=0, gui=None, *, logger=None, node=None):
         """
         초기화
 
@@ -25,7 +28,8 @@ class BlueRoboticsLED:
             spi_device: SPI 디바이스 (기본: 0)
             gui: GUI 인터페이스 (NullGUI 또는 미래 통합 Qt GUI)
             logger: rclpy logger (None이면 print fallback). Keyword-only.
-        
+            node: rclpy Node 참조. None이면 /pkrc/led/color publish 비활성.
+
         연결:
             Red (Vin)       → 5V
             Black (GND)     → GND
@@ -42,11 +46,22 @@ class BlueRoboticsLED:
         self.current_r = 0
         self.current_g = 0
         self.current_b = 0
-        
+        # 외부 모니터링용 last_web_color (set_color에서 web_color 인자로 갱신).
+        self._last_web_color = 'off'
+
         # 패턴 제어
         self.pattern_thread = None
         self.pattern_running = False
-        
+
+        # /pkrc/led/color publisher (BEST_EFFORT, 1Hz heartbeat).
+        self._node = node
+        self.pub_led = None
+        self._heartbeat_timer = None
+        if node is not None:
+            qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+            self.pub_led = node.create_publisher(String, '/pkrc/led/color', qos)
+            self._heartbeat_timer = node.create_timer(1.0, self._publish_led_state)
+
         self._log('info', f"✅ RGB LED 초기화 완료 (SPI{spi_bus}.{spi_device})")
     
     def _send_color(self, r, g, b):
@@ -101,6 +116,16 @@ class BlueRoboticsLED:
                 self.gui.update_led(web_color, color_name)
             except:
                 pass  # GUI 업데이트 실패해도 LED는 작동
+        # 외부 모니터링용 ROS publish (web_color가 명시된 호출에서만 색 갱신).
+        if web_color:
+            self._last_web_color = web_color
+            self._publish_led_state()
+
+    def _publish_led_state(self):
+        """Publish /pkrc/led/color (heartbeat + 변경 즉시)."""
+        if self.pub_led is None:
+            return
+        self.pub_led.publish(String(data=self._last_web_color))
     
     def turn_off(self):
         """LED 끄기"""
