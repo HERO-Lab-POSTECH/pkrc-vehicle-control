@@ -37,12 +37,14 @@ class CameraManager:
     def __init__(self, node, device=DEFAULT_CAMERA_DEVICE,
                  capture_rate_hz=40.0, publish_rate_hz=15.0,
                  reconnect_interval_sec=3.0, frame_timeout_sec=2.0,
+                 reconnect_max_interval_sec=30.0,
                  video_dir=None):
         self.node = node
         self.logger = node.get_logger()
         self.device = device
         self.publish_rate_hz = publish_rate_hz
         self.reconnect_interval_sec = reconnect_interval_sec
+        self.reconnect_max_interval_sec = reconnect_max_interval_sec
         self.frame_timeout_sec = frame_timeout_sec
 
         self.camera = None
@@ -51,6 +53,9 @@ class CameraManager:
         self.last_frame_time = time.time()
         self.last_publish_time = 0.0
         self._reconnect_wait_until = 0.0
+        # Exponential backoff: doubles each consecutive failure, clamped to
+        # reconnect_max_interval_sec. Reset to base on successful open.
+        self._reconnect_backoff_sec = reconnect_interval_sec
 
         # 녹화 상태
         self.video_lock = threading.Lock()
@@ -77,7 +82,11 @@ class CameraManager:
     # ───────── 카메라 open/reopen ─────────
 
     def _open_camera(self):
-        """카메라 초기화 (재연결 지원). 성공 시 True."""
+        """카메라 초기화 (재연결 지원). 성공 시 True.
+
+        실패 로그는 한 시도당 1줄 (`device 열기 실패` OR `not found`)만 찍는다.
+        backoff/ETA 메시지는 `_on_tick`이 책임진다.
+        """
         if self.camera is not None:
             try:
                 self.camera.release()
@@ -89,7 +98,6 @@ class CameraManager:
             self.camera = cv2.VideoCapture(self.device, cv2.CAP_V4L2)
 
             if not self.camera.isOpened() and self.device != '/dev/video0':
-                self.logger.warn(f'⚠️  {self.device} 열기 실패, /dev/video0로 재시도')
                 self.camera.release()
                 self.camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
                 if self.camera.isOpened():
@@ -106,7 +114,6 @@ class CameraManager:
                 self.logger.info(f'✅ USB 카메라 초기화 완료 ({self.device}, {w}x{h})')
                 self.last_frame_time = time.time()
                 return True
-            self.logger.warn('⚠️  USB 카메라를 찾을 수 없습니다')
             return False
         except Exception as e:
             self.logger.error(f'❌ 카메라 초기화 실패: {e}')
@@ -117,14 +124,24 @@ class CameraManager:
     def _on_tick(self):
         now = time.time()
 
-        # 카메라 미연결 → 재연결 backoff
+        # 카메라 미연결 → 재연결 (exponential backoff)
         if self.camera is None or not self.camera.isOpened():
             if now >= self._reconnect_wait_until:
-                self.logger.warn('🔄 카메라 재연결 시도...')
                 if self._open_camera():
+                    # 성공 → backoff 리셋
                     self._reconnect_wait_until = 0.0
+                    self._reconnect_backoff_sec = self.reconnect_interval_sec
                 else:
-                    self._reconnect_wait_until = now + self.reconnect_interval_sec
+                    # 실패 → 한 줄로 다음 ETA 요약 (재시도 spam 방지)
+                    self.logger.warn(
+                        f'⚠️  USB 카메라를 찾을 수 없습니다 '
+                        f'(다음 시도까지 {self._reconnect_backoff_sec:.0f}초)'
+                    )
+                    self._reconnect_wait_until = now + self._reconnect_backoff_sec
+                    self._reconnect_backoff_sec = min(
+                        self._reconnect_backoff_sec * 2,
+                        self.reconnect_max_interval_sec,
+                    )
             return
 
         # 프레임 읽기
@@ -136,7 +153,7 @@ class CameraManager:
             frame = None
 
         if not ret or frame is None:
-            # 타임아웃 시 reopen 예약
+            # 타임아웃 시 reopen 예약 (backoff state는 _on_tick의 미연결 분기가 갱신)
             if now - self.last_frame_time > self.frame_timeout_sec:
                 self.logger.warn(f'⚠️  카메라 프레임 타임아웃 ({self.frame_timeout_sec}초)')
                 try:
@@ -144,7 +161,9 @@ class CameraManager:
                 except Exception as e:
                     self.logger.debug(f'release: {e}')
                 self.camera = None
-                self._reconnect_wait_until = now + self.reconnect_interval_sec
+                # 재연결 backoff을 base에서 다시 시작 (이전 backoff 누적값 무시)
+                self._reconnect_backoff_sec = self.reconnect_interval_sec
+                self._reconnect_wait_until = now + self._reconnect_backoff_sec
             return
 
         self.last_frame_time = now
