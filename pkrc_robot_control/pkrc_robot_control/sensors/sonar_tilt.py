@@ -140,8 +140,8 @@ class SonarTiltModule:
         - LT (axes[2] < -0.5) 홀드 상태에서:
           - Y 버튼 (buttons[3]): 0도
           - A 버튼 (buttons[0]): 90도
-          - X 버튼 (buttons[2]): 단계 감소
-          - B 버튼 (buttons[1]): 단계 증가
+          - X 버튼 (buttons[2]): 단계 증가
+          - B 버튼 (buttons[1]): 단계 감소
         """
         if len(axes) < 5 or len(buttons) < 3:
             return
@@ -175,13 +175,13 @@ class SonarTiltModule:
             self.set_angle(90.0)
             self._log_info('A 버튼 -> 90도')
 
-        # X 버튼 -> 단계 감소 (에지 감지)
+        # X 버튼 -> 단계 증가 (에지 감지)
         elif x_pressed and not self.prev_x_pressed:
-            self.step_down()
-
-        # B 버튼 -> 단계 증가 (에지 감지)
-        elif b_pressed and not self.prev_b_pressed:
             self.step_up()
+
+        # B 버튼 -> 단계 감소 (에지 감지)
+        elif b_pressed and not self.prev_b_pressed:
+            self.step_down()
 
         # 이전 상태 업데이트
         self.prev_x_pressed = x_pressed
