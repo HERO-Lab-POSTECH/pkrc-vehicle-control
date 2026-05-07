@@ -56,8 +56,12 @@ class BatteryMonitor:
         # 상태
         self.bus: Optional[can.interface.Bus] = None
         self._timer = None  # rclpy.timer.Timer; assigned by start_monitoring
+        self._publish_timer = None  # 1Hz heartbeat publish timer
         self._node = None  # set by start_monitoring; needed for stamp/publisher
         self.pub_battery = None  # /pkrc/battery/state; created in start_monitoring
+        # Delta-trigger baseline: last avg voltage we actually published.
+        # None until first publish; reset would require explicit reassignment.
+        self._last_published_voltage: Optional[float] = None
         
         # 콜백 함수
         self.voltage_callback: Optional[Callable] = None
@@ -160,12 +164,24 @@ class BatteryMonitor:
             # 파싱 오류는 조용히 무시
             return None
     
-    def start_monitoring(self, node, update_interval=5.0):
+    def start_monitoring(self, node, update_interval=5.0, publish_interval=1.0):
         """Start periodic voltage polling driven by the node's executor.
 
+        Two timers run independently:
+          * poll timer (`update_interval`s) drains CAN frames into the
+            internal `voltages` dict via `_poll_voltage`.
+          * publish timer (`publish_interval`s) emits a heartbeat to
+            `/pkrc/battery/state` with the latest known average — even
+            when no fresh CAN frame arrived in the interval, so external
+            subscribers always see liveness. Decoupling publish from the
+            CAN-recv path means a 0.1s recv timeout (kept short to protect
+            20Hz hovering / pid hot loops) cannot starve the topic.
+
         Args:
-            node: rclpy node owning the timer (cancels on shutdown).
-            update_interval: timer period in seconds (default 5.0).
+            node: rclpy node owning the timers (cancels on shutdown).
+            update_interval: voltage poll period in seconds (default 5.0).
+            publish_interval: heartbeat publish period in seconds
+                (default 1.0, matching the /pkrc/* heartbeat convention).
         """
         if self._timer is not None:
             self._log('warn', '⚠️  이미 모니터링 중입니다')
@@ -175,11 +191,15 @@ class BatteryMonitor:
             return
         self._node = node
         # /pkrc/battery/state publisher (BEST_EFFORT, depth=10) — 외부 Qt 모니터링용.
-        # publish는 매 _check_voltage_warnings마다(=update_interval 주기). heartbeat 별도 불필요.
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.pub_battery = node.create_publisher(BatteryState, '/pkrc/battery/state', qos)
         self._timer = node.create_timer(update_interval, self._poll_voltage)
-        self._log('info', f'✅ 배터리 전압 모니터링 시작 ({update_interval}s 주기)')
+        self._publish_timer = node.create_timer(publish_interval, self._publish_heartbeat)
+        self._log(
+            'info',
+            f'✅ 배터리 전압 모니터링 시작 (poll {update_interval}s, '
+            f'publish heartbeat {publish_interval}s)',
+        )
     
     def _poll_voltage(self):
         """Timer callback: drain available voltage frames once per tick.
@@ -206,26 +226,47 @@ class BatteryMonitor:
                 self.voltage_callback(vesc_id, voltage)
             self._check_voltage_warnings(vesc_id, voltage)
     
+    # Delta threshold (V): only republish on a fresh measurement when the
+    # average voltage moved at least this much, to avoid flooding the topic
+    # on Status 5 floating-point noise (~50 mV jitter observed in field).
+    _DELTA_PUBLISH_V = 0.2
+
+    def _classify(self, voltage):
+        """Map a voltage (V) to a status string used by BatteryState.health.
+
+        None voltage means "no CAN data yet". Don't escalate the health
+        field in that case — subscribers see NaN voltage anyway and can
+        gray-out the gauge. Returning 'good' avoids a spurious DEAD signal.
+        """
+        if voltage is None:
+            return 'good'
+        if voltage <= self.critical_voltage_threshold:
+            return 'critical'
+        if voltage <= self.low_voltage_threshold:
+            return 'low'
+        return 'good'
+
     def _check_voltage_warnings(self, vesc_id, voltage):
-        """전압 경고 체크 및 웹 GUI 자동 업데이트 (1분에 한 번)"""
-        # 평균 전압 및 퍼센테이지 계산
+        """Run threshold callbacks and trigger an immediate publish on
+        large voltage deltas. Heartbeat is handled by `_publish_heartbeat`.
+        """
         avg_voltage = self.get_voltage()
         percentage = self.get_battery_percentage()
-        
-        # 배터리 상태 결정
-        if voltage <= self.critical_voltage_threshold:
-            status = 'critical'
-            if self.critical_voltage_callback:
-                self.critical_voltage_callback(vesc_id, voltage)
-        elif voltage <= self.low_voltage_threshold:
-            status = 'low'
-            if self.low_voltage_callback:
-                self.low_voltage_callback(vesc_id, voltage)
-        else:
-            status = 'good'
-        
-        # ROS 토픽 publish (매 측정마다, GUI throttle과 무관)
-        self._publish_battery_state(avg_voltage, percentage, status)
+        status = self._classify(voltage)
+
+        if status == 'critical' and self.critical_voltage_callback:
+            self.critical_voltage_callback(vesc_id, voltage)
+        elif status == 'low' and self.low_voltage_callback:
+            self.low_voltage_callback(vesc_id, voltage)
+
+        # Delta trigger: republish immediately when avg voltage moved enough
+        # to be UI-visible. First-ever publish also goes through this path.
+        if avg_voltage is not None and (
+            self._last_published_voltage is None
+            or abs(avg_voltage - self._last_published_voltage) >= self._DELTA_PUBLISH_V
+        ):
+            self._publish_battery_state(avg_voltage, percentage, status)
+            self._last_published_voltage = avg_voltage
 
         # GUI 자동 업데이트 (1분에 한 번만)
         current_time = time.time()
@@ -249,6 +290,18 @@ class BatteryMonitor:
                 except:
                     pass  # GUI 업데이트 실패해도 모니터링은 계속
     
+    def _publish_heartbeat(self):
+        """1Hz heartbeat: publish latest known battery state regardless of
+        whether a fresh CAN frame arrived this interval. NaN voltage when
+        no frame ever captured — keeps the topic alive for liveness checks.
+        """
+        avg_voltage = self.get_voltage()
+        percentage = self.get_battery_percentage()
+        status = self._classify(avg_voltage)
+        self._publish_battery_state(avg_voltage, percentage, status)
+        if avg_voltage is not None:
+            self._last_published_voltage = avg_voltage
+
     def _publish_battery_state(self, avg_voltage, percentage, status):
         """Publish /pkrc/battery/state for external monitoring.
 
@@ -278,11 +331,15 @@ class BatteryMonitor:
                 self._log('info', f'🔋 배터리: {voltage_str}')
     
     def stop_monitoring(self):
-        """Cancel the monitoring timer (idempotent)."""
-        if self._timer is None:
+        """Cancel both poll and publish timers (idempotent)."""
+        if self._timer is None and self._publish_timer is None:
             return
-        self._timer.cancel()
-        self._timer = None
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+        if self._publish_timer is not None:
+            self._publish_timer.cancel()
+            self._publish_timer = None
         self._log('info', '✅ 배터리 전압 모니터링 중지')
     
     def get_voltage(self, vesc_id: Optional[int] = None) -> Optional[float]:
